@@ -1,7 +1,7 @@
 {
   "season": "Midnight Season 2 (12.1)",
   "upgradeSeasonId": 37,
-  "_upgradeSeasonId_comment": "The season that owns this patch's upgrade tracks (bonus ids 12817-12854 for season 37). Only items carrying one of THIS season's track bonus ids can still be upgraded — last season's gear keeps its item level but loses its track, and its levels overlap this season's Adventurer/Veteran steps, so it must not be guessed from item level alone.",
+  "_upgradeSeasonId_comment": "The season that owns this patch's upgrade tracks (bonus ids 12817-12854 for season 37). Only items carrying one of THIS season's track bonus ids can still be upgraded \u2014 last season's gear keeps its item level but loses its track, and its levels overlap this season's Adventurer/Veteran steps, so it must not be guessed from item level alone.",
   "_comment": "Hand-curated once per season. Upgrade tracks, crafted cap and the Voidforged offsets are CONFIRMED against live bonus data for 12.1.0.69299. Raid / M+ / delve / world-boss drop levels are derived from the same track positions season 1 used and are pending in-game confirmation.",
   "tracks": {
     "Adventurer": [
@@ -55,7 +55,7 @@
   },
   "upgradeCrestCost": 20,
   "consumableOptions": {
-    "_comment": "Alternatives for the Top Gear consumables comparison. Season-1 consumables carry into 12.1; the two 12.1 feast foods are included (their stats are not measured yet — labels say \"new in 12.1\").",
+    "_comment": "Alternatives for the Top Gear consumables comparison. Season-1 consumables carry into 12.1; the two 12.1 feast foods are included (their stats are not measured yet \u2014 labels say \"new in 12.1\").",
     "flask": [
       {
         "value": "flask_of_the_shattered_sun_2",
@@ -231,7 +231,7 @@
   "maxIlvl": 344,
   "droptimizer": {
     "_comment": "Drop item levels per source. Derived from season-2 track positions; verify against in-game tooltips.",
-    "_raidDifficulties_comment": "FALLBACK ONLY. Each raid item now carries its own drop level, read from its bonus tree when the loot database is built (server/dropLevels.js) — the level is a property of the item, so bosses later in the instance drop higher. These numbers are used only for the handful of raid items that have no bonus tree, and for caches downloaded before those tables were added. They are Caustic Keeper-Crusher's levels (3/6 on every track), a reasonable middle. Do NOT infer them from a piece someone is wearing — crest upgrades raise the level above what dropped.",
+    "_raidDifficulties_comment": "FALLBACK ONLY. Each raid item now carries its own drop level, read from its bonus tree when the loot database is built (server/dropLevels.js) \u2014 the level is a property of the item, so bosses later in the instance drop higher. These numbers are used only for the handful of raid items that have no bonus tree, and for caches downloaded before those tables were added. They are Caustic Keeper-Crusher's levels (3/6 on every track), a reasonable middle. Do NOT infer them from a piece someone is wearing \u2014 crest upgrades raise the level above what dropped.",
     "raidDifficulties": {
       "LFR": 285,
       "Normal": 298,
@@ -598,7 +598,7 @@
     ]
   },
   "diamondOptions": {
-    "_comment": "Eversong Diamonds — the unique special-socket gems. Compared by swapping whichever socket currently holds one.",
+    "_comment": "Eversong Diamonds \u2014 the unique special-socket gems. Compared by swapping whichever socket currently holds one.",
     "options": [
       {
         "id": 240967,
@@ -627,5 +627,14 @@
       240982,
       240983
     ]
+  },
+  "upgradeCrestCostDiscounted": 10,
+  "upgradeCrestAchievements": {
+    "_comment": "Account-wide 'Outgrow the use of X Mistcrests' achievements. Holding one halves that tier's crest cost on every character. Ids listed in the export's upgrade_achievements= line; each needs every core slot's ACCOUNT high-watermark to reach that track's 6/6 item level.",
+    "Adventurer": 62410,
+    "Veteran": 62411,
+    "Champion": 62412,
+    "Hero": 62414,
+    "Myth": 62416
   }
 }
