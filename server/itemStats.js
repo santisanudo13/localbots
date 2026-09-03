@@ -34,6 +34,19 @@ const STAT_NAMES = {
 const RATINGS = new Set([32, 36, 40, 49]);
 const PRIMARY_COMBINED = new Set([71, 72, 73, 74]); // "best of" primary placeholders
 
+// Crafted gear's two player-chosen secondaries don't appear in ItemSparse as
+// real stat ids (32/36/40/49) -- the record instead carries two PLACEHOLDER
+// ids, empirically 24 (stands for "Crit or Haste, whichever was crafted") and
+// 25 ("Vers or Mastery, whichever was crafted"), each with the same alloc
+// weight regardless of which one was actually picked. The export's own
+// crafted_stats=A/B (see droptimizer.js's CRAFT_STAT_LABELS) says which —
+// without it these two rows have no real id to resolve to and were silently
+// dropped entirely, which is why a crafted item's tooltip showed no
+// secondaries at all. Keyed by placeholder id -> the pair of real ids it can
+// resolve to, so a crafted_stats value is matched to the RIGHT placeholder
+// regardless of which order the export lists them in.
+const CRAFTED_PLACEHOLDER_PAIRS = { 24: new Set([32, 36]), 25: new Set([40, 49]) };
+
 // Item.SubclassID, for the type line under an item's slot ("Chest ... Cloth")
 // -- stable WoW constants (ITEM_SUBCLASS_ARMOR / _WEAPON), not something wago
 // needs to be asked for by name. Raidbots' own item hovercard translates this
@@ -247,7 +260,7 @@ export function effectContext(itemId, ilvl, tables, scaling) {
 // export writes that source as `redirected_base_stats=<id>`, and simc sims it
 // that way — without this the tooltip shows the tier piece's original stats and
 // disagrees with the game.
-export function itemStats(itemId, ilvl, tables, scaling, statSourceId = null, locale = 'en') {
+export function itemStats(itemId, ilvl, tables, scaling, statSourceId = null, locale = 'en', craftedStats = null) {
   if (!tables || !scaling || !ilvl) return null;
   const it = tables.items.get(Number(itemId));
   if (!it) return null;
@@ -264,15 +277,24 @@ export function itemStats(itemId, ilvl, tables, scaling, statSourceId = null, lo
   const primary = [];
   const secondary = [];
   let stamina = null;
-  for (const { stat, alloc } of allocs) {
+  for (const { stat: rawStat, alloc } of allocs) {
+    // resolve a crafted item's placeholder secondary to the real stat the
+    // crafter actually picked, when the export said which (see
+    // CRAFTED_PLACEHOLDER_PAIRS) -- falls back to the unresolved placeholder
+    // id (still treated as a rating below) so the row still shows *something*
+    // rather than being silently dropped when crafted_stats= wasn't sent.
+    const pair = CRAFTED_PLACEHOLDER_PAIRS[rawStat];
+    const resolved = pair && craftedStats ? craftedStats.find((s) => pair.has(Number(s))) : null;
+    const stat = resolved ?? rawStat;
+    const isRating = RATINGS.has(stat) || !!pair;
     let v = alloc * budget[slot] * 0.0001;
-    if (RATINGS.has(stat)) v *= crMult;
+    if (isRating) v *= crMult;
     else if (stat === 7) v *= stamMult;
     const value = Math.round(v);
     if (!value) continue;
-    const row = { stat, name: STAT_NAMES[stat] ?? `Stat ${stat}`, value };
+    const row = { stat, name: STAT_NAMES[stat] ?? (pair ? 'Secondary Stat' : `Stat ${stat}`), value };
     if (stat === 7) stamina = row;
-    else if (RATINGS.has(stat)) secondary.push(row);
+    else if (isRating) secondary.push(row);
     else if (PRIMARY_COMBINED.has(stat) || stat <= 7) primary.push(row);
   }
 

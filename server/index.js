@@ -686,12 +686,15 @@ app.get('/api/items', (req, res) => {
   const scaling = loadScaling(simcPath, p.def.ptr);
   const out = {};
   for (const pair of String(req.query.q ?? '').split(',').slice(0, 60)) {
-    const [rawId, rawIlvl, rawSrc] = pair.split(':');
+    const [rawId, rawIlvl, rawSrc, rawCraft] = pair.split(':');
     const id = Number(rawId);
     const ilvl = Number(rawIlvl);
     if (!id) continue;
+    // the crafter's two chosen secondaries ("32-49"), for resolving a crafted
+    // item's placeholder stat rows to real ones -- see itemStats.js
+    const craftedStats = rawCraft ? rawCraft.split('-').map(Number) : null;
     const entry = { icon: icons?.get(id) ?? null };
-    const st = itemStats(id, ilvl, p.itemTables, scaling, Number(rawSrc) || null, p.locale);
+    const st = itemStats(id, ilvl, p.itemTables, scaling, Number(rawSrc) || null, p.locale, craftedStats);
     if (st) Object.assign(entry, st);
     const fx = loadEffectData(simcPath, p.def.ptr);
     const ctx = effectContext(id, ilvl, p.itemTables, scaling);

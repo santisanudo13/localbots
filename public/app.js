@@ -1072,6 +1072,7 @@ async function refreshGearList() {
             name: item.name, ilvl: item.targetIlvl ?? item.ilvl, slot: prettySlot(item.slot),
             statSource: Number(String(item.line ?? '').match(/redirected_base_stats=(\d+)/)?.[1]) || null,
             source: item.section, quality: item.quality, craftingQuality: item.craftingQuality,
+            craftedStats: item.craftedStats,
             enchantId: equippedEnchGemBySlot[item.slot]?.enchantId,
             gemIds: equippedEnchGemBySlot[item.slot]?.gemIds,
             ...(trackInfo(item)
@@ -2010,6 +2011,15 @@ function renderTopGearRows() {
   paintItemIcons(document.querySelector('#topgear-table'));
 }
 
+// the crafter's two chosen secondaries, read straight out of the exact simmed
+// line (see profileBuilder.js's `line`) rather than needing every result row
+// to carry its own parsed copy -- only ever present on the single-item path,
+// same as `line` itself.
+function craftedStatsFromLine(line) {
+  const m = String(line ?? '').match(/(?:^|,)crafted_stats=(\d+)\/(\d+)/);
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+
 function rowHtml(t, maxAbs) {
   const cls = t.delta > t.error ? 'delta-pos' : t.delta < -t.error ? 'delta-neg' : 'delta-zero';
   const sign = t.delta > 0 ? '+' : '';
@@ -2046,6 +2056,7 @@ function rowHtml(t, maxAbs) {
     name: t.itemName, ilvl: t.ilvl, slot: prettySlot(t.placement),
     source: [t.section, t.boss].filter(Boolean).join(' → '),
     enchantId: eq?.enchantId, gemIds: eq?.gemIds,
+    craftedStats: craftedStatsFromLine(t.line),
     ...(trackStepFor(t.track, t.ilvl) ?? {}),
   };
   return `
@@ -2172,6 +2183,7 @@ function renderTopGearGrid() {
     const ilvl = pick ? pick.ilvl : eq?.ilvl;
     const info = {
       name, ilvl, slot: prettySlot(slot), enchantId: eq?.enchantId, gemIds: eq?.gemIds,
+      craftedStats: pick ? craftedStatsFromLine(pick.line) : null,
       ...(pick ? (trackStepFor(pick.track, pick.ilvl) ?? {}) : {}),
     };
     const detail = pick
@@ -2240,6 +2252,7 @@ function renderBestSetup() {
       name: t.itemName, ilvl: t.ilvl, slot: prettySlot(t.placement),
       source: [t.section, t.boss].filter(Boolean).join(' → '),
       enchantId: eq?.enchantId, gemIds: eq?.gemIds,
+      craftedStats: craftedStatsFromLine(t.line),
       ...(trackStepFor(t.track, t.ilvl) ?? {}),
     };
     return `<li class="bs-item">
@@ -2554,6 +2567,9 @@ function tileDataAttrs(id, info = {}) {
     // crafter's quality roll (1-5), same scale the in-game recipe UI shows --
     // only ever set on crafted gear (see gearParser.js's craftingQuality)
     info.craftingQuality ? `data-craftq="${Number(info.craftingQuality)}"` : '',
+    // the crafter's two chosen secondaries ("32-49") -- resolves the item's
+    // stat-template placeholders to real stats server-side (see itemStats.js)
+    info.craftedStats?.length === 2 ? `data-craftstats="${info.craftedStats.map(Number).join('-')}"` : '',
     `data-quality="${q}"`,
   ].filter(Boolean).join(' ');
 }
@@ -2606,7 +2622,13 @@ const ENCHANT_ICON_URL = 'https://www.raidbots.com/static/images/icons/56/inv_mi
 function enchGemSubline(enchantId, gemIds) {
   const parts = [];
   if (enchantId) {
-    parts.push(`<span class="enchgem-item"><img class="mini-icon" alt="" src="${ENCHANT_ICON_URL}"> ${esc(gemOrEnchantLabel(enchantId, 'enchant'))}</span>`);
+    const name = gemOrEnchantLabel(enchantId, 'enchant');
+    // enchants have no item id (they're a SpellItemEnchantment row, not an
+    // item), so this hovercard is name-only -- no stats to fetch, unlike a
+    // real item or gem. Still needs `data-name` alone to trigger the shared
+    // hover handler (see its `[data-item], [data-name]` selector).
+    parts.push(`<span class="enchgem-item"><img class="mini-icon" alt="" src="${ENCHANT_ICON_URL}"
+      data-name="${esc(name)}" data-source="Enchant"> ${esc(name)}</span>`);
   }
   for (const g of gemIds ?? []) {
     parts.push(`<span class="enchgem-item">${itemTile(g, { name: gemOrEnchantLabel(g, 'gem'), mini: true })} ${esc(gemOrEnchantLabel(g, 'gem'))}</span>`);
@@ -2795,7 +2817,8 @@ function showItemTip(el) {
   const id = Number(d.item);
   const ilvl = Number(d.ilvl);
   const src = Number(d.statsrc) || 0;
-  const key = id && ilvl ? `${id}:${ilvl}${src ? `:${src}` : ''}` : null;
+  const craft = d.craftstats ?? ''; // "32-49" -- the crafter's two chosen secondaries
+  const key = id && ilvl ? `${id}:${ilvl}:${src || ''}${craft ? `:${craft}` : ''}` : null;
 
   tip.innerHTML = tipShell(d, key ? statCache.get(key) : null);
   tip.classList.remove('hidden');
@@ -2841,10 +2864,10 @@ function positionTip(el) {
 function hideItemTip() { if (tipEl) tipEl.classList.add('hidden'); }
 
 document.addEventListener('mouseover', (e) => {
-  const el = e.target.closest?.('[data-item], [data-name][data-ilvl]');
+  const el = e.target.closest?.('[data-item], [data-name]');
   if (el) showItemTip(el);
 });
 document.addEventListener('mouseout', (e) => {
-  if (e.target.closest?.('[data-item], [data-name][data-ilvl]')) hideItemTip();
+  if (e.target.closest?.('[data-item], [data-name]')) hideItemTip();
 });
 document.addEventListener('scroll', hideItemTip, true);
