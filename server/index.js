@@ -691,7 +691,7 @@ app.get('/api/items', (req, res) => {
     const ilvl = Number(rawIlvl);
     if (!id) continue;
     const entry = { icon: icons?.get(id) ?? null };
-    const st = itemStats(id, ilvl, p.itemTables, scaling, Number(rawSrc) || null);
+    const st = itemStats(id, ilvl, p.itemTables, scaling, Number(rawSrc) || null, p.locale);
     if (st) Object.assign(entry, st);
     const fx = loadEffectData(simcPath, p.def.ptr);
     const ctx = effectContext(id, ilvl, p.itemTables, scaling);

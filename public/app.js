@@ -1055,31 +1055,44 @@ async function refreshGearList() {
     updateGearCount();
     return;
   }
-  const bySection = {};
-  gearItems.forEach((item, i) => {
-    (bySection[item.section] ??= []).push({ item, i });
-  });
-  $('gear-list').innerHTML = Object.entries(bySection).map(([section, entries]) => `
-    <div class="gear-group">${esc(section)} (${entries.length})</div>
-    ${entries.map(({ item, i }) => `
-      <label>
-        <input type="checkbox" data-gear-index="${i}"
+  // Raidbots-style: one block per SLOT (not per bags/equipped/etc. section),
+  // each a grid of clickable item cards -- the section still shows as a small
+  // label on the card since unlike Raidbots we also track Catalyzed/Search
+  // as distinct synthetic sources worth calling out.
+  const bySlot = {};
+  gearItems.forEach((item, i) => { (bySlot[item.slot] ??= []).push({ item, i }); });
+  const slots = SLOT_ORDER.filter((s) => bySlot[s]);
+  $('gear-list').innerHTML = slots.map((slot) => `
+    <div class="gear-slot-block">
+      <h3 class="gear-slot-heading">${esc(prettySlot(slot))} (${bySlot[slot].length})</h3>
+      <div class="gear-slot-grid">
+        ${bySlot[slot].map(({ item, i }) => {
+          const info = {
+            name: item.name, ilvl: item.targetIlvl ?? item.ilvl, slot: prettySlot(item.slot),
+            statSource: Number(String(item.line ?? '').match(/redirected_base_stats=(\d+)/)?.[1]) || null,
+            source: item.section, quality: item.quality, craftingQuality: item.craftingQuality,
+            enchantId: equippedEnchGemBySlot[item.slot]?.enchantId,
+            gemIds: equippedEnchGemBySlot[item.slot]?.gemIds,
+            ...(trackInfo(item)
+              ? { track: item.track, trackStep: item.stepIdx + 1, trackMax: season.tracks[item.track].length }
+              : {}),
+          };
+          return `
+      <label class="gear-card">
+        <input type="checkbox" class="gear-card-check" data-gear-index="${i}"
           ${item.section === 'Equipped' ? '' : 'checked'}>
-        <span class="gear-icon-row">${itemTile(item.id, {
-          name: item.name, ilvl: item.targetIlvl ?? item.ilvl, slot: prettySlot(item.slot),
-          statSource: Number(String(item.line ?? '').match(/redirected_base_stats=(\d+)/)?.[1]) || null,
-          source: section, quality: item.quality,
-          enchantId: equippedEnchGemBySlot[item.slot]?.enchantId,
-          gemIds: equippedEnchGemBySlot[item.slot]?.gemIds,
-          ...(trackInfo(item)
-            ? { track: item.track, trackStep: item.stepIdx + 1, trackMax: season.tracks[item.track].length }
-            : {}),
-        })}<span>${esc(item.name)}${trackTagFor(item) ? ` <span class="track-tag tier-${trackTagFor(item).toLowerCase()}">(${trackTagFor(item)})</span>` : ''}<button type="button" class="slot-tag" data-solo-slot="${esc(item.slot)}" title="Tick only ${esc(prettySlot(item.slot))} items">${esc(prettySlot(item.slot))}</button></span></span>
-        ${ilvlControl(item, i)}
+        <span class="gear-card-icon" ${tileDataAttrs(item.id, info)}>${itemTileWithBadge(item.id, info, item)}</span>
+        <span class="gear-card-body">
+          <span class="gear-card-name">${esc(item.name)}${trackTagFor(item) ? ` <span class="track-tag tier-${trackTagFor(item).toLowerCase()}">(${trackTagFor(item)})</span>` : ''}</span>
+          ${item.section !== 'Bags' ? `<span class="gear-card-section">${esc(item.section)}</span>` : ''}
+          ${ilvlControl(item, i)}
+        </span>
         ${item.section === 'Search'
           ? `<button type="button" class="search-remove" data-search-key="${esc(item._searchKey)}" title="Remove from the list">✕</button>` : ''}
-      </label>`).join('')}
-  `).join('');
+      </label>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
   paintItemIcons($('gear-list'));
   document.querySelectorAll('#gear-list input[type="checkbox"]').forEach((cb) => {
     cb.addEventListener('change', updateGearCount);
@@ -1089,16 +1102,6 @@ async function refreshGearList() {
       e.preventDefault();
       searchItems = searchItems.filter((it) => it._searchKey !== btn.dataset.searchKey);
       refreshGearList();
-    });
-  });
-  document.querySelectorAll('#gear-list button.slot-tag').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      soloGearSlots([btn.dataset.soloSlot]);
-      $('gear-slot-filter').querySelectorAll('button.chip').forEach((c) => {
-        c.classList.toggle('active', c.dataset.slot === btn.dataset.soloSlot);
-      });
     });
   });
   populateGearSlotFilter();
@@ -1988,15 +1991,15 @@ function renderTopGearRows() {
       .sort((a, b) => Math.max(...b[1].map((t) => t.delta)) - Math.max(...a[1].map((t) => t.delta)));
     const maxAbs = Math.max(...visible.map((t) => Math.abs(t.delta)), 1);
     document.querySelector('#topgear-table tbody').innerHTML = groups.map(([boss, rows]) =>
-      `<tr class="slot-group-row"><td colspan="5">${esc(boss ?? '')}</td></tr>` +
-      rows.map((t) => rowHtml(t, maxAbs)).join('')).join('') || '<tr><td colspan="5">No results match the filter.</td></tr>';
+      `<tr class="slot-group-row"><td colspan="6">${esc(boss ?? '')}</td></tr>` +
+      rows.map((t) => rowHtml(t, maxAbs)).join('')).join('') || '<tr><td colspan="6">No results match the filter.</td></tr>';
     paintItemIcons(document.querySelector('#topgear-table'));
     return;
   }
 
   const maxAbs = Math.max(...visible.map((t) => Math.abs(t.delta)), 1);
   document.querySelector('#topgear-table tbody').innerHTML =
-    visible.map((t) => rowHtml(t, maxAbs)).join('') || '<tr><td colspan="5">No results match the filter.</td></tr>';
+    visible.map((t) => rowHtml(t, maxAbs)).join('') || '<tr><td colspan="6">No results match the filter.</td></tr>';
   paintItemIcons(document.querySelector('#topgear-table'));
 }
 
@@ -2027,7 +2030,7 @@ function rowHtml(t, maxAbs) {
     ? ` <button class="expander" data-exp="${detailId}" title="Show exactly what changes">▸ ${t.changes.length} change${t.changes.length === 1 ? '' : 's'}</button>`
     : '';
   const detailRow = expandable
-    ? `<tr class="detail-row hidden" data-detail="${detailId}"><td colspan="5"><ul class="change-list">
+    ? `<tr class="detail-row hidden" data-detail="${detailId}"><td colspan="6"><ul class="change-list">
         ${t.changes.map((c) => `<li>${esc(c.item ?? prettySlot(c.slot))} <span class="hint-inline">(${esc(prettySlot(c.slot))})</span>:
           ${esc(c.from)} → <strong>${esc(c.to)}</strong></li>`).join('')}
       </ul></td></tr>`
@@ -2052,8 +2055,64 @@ function rowHtml(t, maxAbs) {
       <div class="track"><div class="fill" style="width:${fill.toFixed(1)}%; background:${t.delta >= 0 ? 'var(--green)' : 'var(--red)'}"></div></div>
       <span class="pct ${cls}">${sign}${t.deltaPct.toFixed(2)}%</span>
     </div></td>
+    <td class="row-menu-cell">${rowMenuHtml(t)}</td>
   </tr>${detailRow}`;
 }
+
+// Raidbots-style per-row "..." menu: pivots this one candidate into another
+// tool instead of leaving the results table a dead end. "Run in Quick Sim"
+// needs the exact line this candidate was simmed with (see profileBuilder.js's
+// `line`, added specifically for this) -- reconstructing an approximation
+// from itemId/ilvl alone would silently drop bonus_ids, crafted stats, gems,
+// so the action just doesn't offer itself on rows that predate that field
+// (older saved history entries) or the synthetic weapon-pair rows.
+function rowMenuHtml(t) {
+  const idx = tgRows.indexOf(t);
+  return `<div class="row-menu">
+    <button type="button" class="row-menu-toggle" data-row-idx="${idx}" title="More actions">⋯</button>
+    <div class="row-menu-panel hidden" data-row-panel="${idx}">
+      ${t.line ? `<button type="button" data-row-action="quicksim" data-row-idx="${idx}">Run in Quick Sim</button>` : ''}
+      <button type="button" data-row-action="copy" data-row-idx="${idx}">Copy to clipboard</button>
+    </div>
+  </div>`;
+}
+
+// swap `placement`'s equipped line in the pasted profile for `line` verbatim
+// -- same shape the addon itself writes (see gearParser.js), so a slot that
+// was empty just gets a new line appended rather than matched-and-replaced.
+function swapProfileLine(profileText, placement, line) {
+  const re = new RegExp(`^${placement}=.*$`, 'm');
+  return re.test(profileText) ? profileText.replace(re, line) : `${profileText}\n${line}`;
+}
+
+document.querySelector('#topgear-table tbody')?.addEventListener('click', (e) => {
+  const toggle = e.target.closest('.row-menu-toggle');
+  if (toggle) {
+    const panel = document.querySelector(`[data-row-panel="${toggle.dataset.rowIdx}"]`);
+    const wasHidden = panel.classList.contains('hidden');
+    document.querySelectorAll('.row-menu-panel').forEach((p) => p.classList.add('hidden'));
+    panel.classList.toggle('hidden', !wasHidden);
+    return;
+  }
+  const action = e.target.closest('[data-row-action]');
+  if (!action) { document.querySelectorAll('.row-menu-panel').forEach((p) => p.classList.add('hidden')); return; }
+  const t = tgRows[Number(action.dataset.rowIdx)];
+  if (!t) return;
+  document.querySelectorAll('.row-menu-panel').forEach((p) => p.classList.add('hidden'));
+  if (action.dataset.rowAction === 'copy') {
+    const sign = t.delta > 0 ? '+' : '';
+    const text = `${t.itemName ?? '?'} — ${sign}${Math.round(t.delta).toLocaleString()} DPS (${sign}${t.deltaPct.toFixed(2)}%)`;
+    navigator.clipboard?.writeText(text).catch(() => {});
+  } else if (action.dataset.rowAction === 'quicksim' && t.line && t.placement) {
+    $('profile').value = swapProfileLine($('profile').value, t.placement, t.line);
+    document.querySelector('.tab[data-mode="quick"]').click();
+    showView('setup');
+  }
+});
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.row-menu')) return;
+  document.querySelectorAll('.row-menu-panel').forEach((p) => p.classList.add('hidden'));
+});
 
 let tgDetailSeq = 0;
 
@@ -2485,6 +2544,9 @@ function tileDataAttrs(id, info = {}) {
     info.track ? `data-track="${esc(info.track)}"` : '',
     info.trackStep != null ? `data-track-step="${Number(info.trackStep)}"` : '',
     info.trackMax != null ? `data-track-max="${Number(info.trackMax)}"` : '',
+    // crafter's quality roll (1-5), same scale the in-game recipe UI shows --
+    // only ever set on crafted gear (see gearParser.js's craftingQuality)
+    info.craftingQuality ? `data-craftq="${Number(info.craftingQuality)}"` : '',
     `data-quality="${q}"`,
   ].filter(Boolean).join(' ');
 }
@@ -2509,9 +2571,17 @@ function catalystBadge(t) {
   </span>`;
 }
 
+// A crafted item's quality roll (1-5 diamonds, same scale the in-game
+// recipe/tooltip shows), same corner-badge treatment as the catalyst flask --
+// only ever set on crafted gear (see gearParser.js's craftingQuality).
+function craftBadge(info) {
+  if (!info?.craftingQuality) return '';
+  return `<span class="craft-badge" title="Crafting Quality ${info.craftingQuality}/5">${info.craftingQuality}</span>`;
+}
+
 function itemTileWithBadge(id, info, t) {
   if (!id) return itemTile(id, info);
-  return `<span class="item-tile-wrap">${itemTile(id, info)}${catalystBadge(t)}</span>`;
+  return `<span class="item-tile-wrap">${itemTile(id, info)}${catalystBadge(t)}${craftBadge(info)}</span>`;
 }
 
 // The game's own enchant data has no per-enchant icon (SpellItemEnchantment's

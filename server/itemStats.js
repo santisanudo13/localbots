@@ -36,16 +36,33 @@ const PRIMARY_COMBINED = new Set([71, 72, 73, 74]); // "best of" primary placeho
 
 // Item.SubclassID, for the type line under an item's slot ("Chest ... Cloth")
 // -- stable WoW constants (ITEM_SUBCLASS_ARMOR / _WEAPON), not something wago
-// needs to be asked for by name.
-const ARMOR_SUBCLASS = { 1: 'Cloth', 2: 'Leather', 3: 'Mail', 4: 'Plate', 6: 'Shield' };
+// needs to be asked for by name. Raidbots' own item hovercard translates this
+// line (and binding) along with everything else when its language switch is
+// set to Spanish -- verified live against raidbots.com/simbot/topgear -- so
+// these carry an `es` translation too, picked by the caller's locale.
+const ARMOR_SUBCLASS = {
+  en: { 1: 'Cloth', 2: 'Leather', 3: 'Mail', 4: 'Plate', 6: 'Shield' },
+  es: { 1: 'Tela', 2: 'Cuero', 3: 'Malla', 4: 'Placa', 6: 'Escudo' },
+};
 const WEAPON_SUBCLASS = {
-  0: 'One-Handed Axe', 1: 'Two-Handed Axe', 2: 'Bow', 3: 'Gun', 4: 'One-Handed Mace',
-  5: 'Two-Handed Mace', 6: 'Polearm', 7: 'One-Handed Sword', 8: 'Two-Handed Sword',
-  10: 'Staff', 13: 'Fist Weapon', 15: 'Dagger', 16: 'Thrown', 17: 'Spear',
-  18: 'Crossbow', 19: 'Wand',
+  en: {
+    0: 'One-Handed Axe', 1: 'Two-Handed Axe', 2: 'Bow', 3: 'Gun', 4: 'One-Handed Mace',
+    5: 'Two-Handed Mace', 6: 'Polearm', 7: 'One-Handed Sword', 8: 'Two-Handed Sword',
+    10: 'Staff', 13: 'Fist Weapon', 15: 'Dagger', 16: 'Thrown', 17: 'Spear',
+    18: 'Crossbow', 19: 'Wand',
+  },
+  es: {
+    0: 'Hacha a una mano', 1: 'Hacha a dos manos', 2: 'Arco', 3: 'Arma de fuego', 4: 'Maza a una mano',
+    5: 'Maza a dos manos', 6: 'Arma de asta', 7: 'Espada a una mano', 8: 'Espada a dos manos',
+    10: 'Bastón', 13: 'Arma de puño', 15: 'Daga', 16: 'Arma arrojadiza', 17: 'Lanza',
+    18: 'Ballesta', 19: 'Varita',
+  },
 };
 // Item.Bonding -> ITEM_BIND enum
-const BIND_TEXT = { 1: 'Binds when picked up', 2: 'Binds when equipped' };
+const BIND_TEXT = {
+  en: { 1: 'Binds when picked up', 2: 'Binds when equipped' },
+  es: { 1: 'Se liga al recogerlo', 2: 'Se liga al equiparlo' },
+};
 
 // combat_rating_multiplier_type, in simc's order
 const CR_ARMOR = 0, CR_WEAPON = 1, CR_TRINKET = 2, CR_JEWELRY = 3;
@@ -230,7 +247,7 @@ export function effectContext(itemId, ilvl, tables, scaling) {
 // export writes that source as `redirected_base_stats=<id>`, and simc sims it
 // that way — without this the tooltip shows the tier piece's original stats and
 // disagrees with the game.
-export function itemStats(itemId, ilvl, tables, scaling, statSourceId = null) {
+export function itemStats(itemId, ilvl, tables, scaling, statSourceId = null, locale = 'en') {
   if (!tables || !scaling || !ilvl) return null;
   const it = tables.items.get(Number(itemId));
   if (!it) return null;
@@ -287,11 +304,14 @@ export function itemStats(itemId, ilvl, tables, scaling, statSourceId = null) {
     }
   }
 
-  const typeLabel = c.cls === 4 ? ARMOR_SUBCLASS[c.sub] : c.cls === 2 ? WEAPON_SUBCLASS[c.sub] : null;
+  const armorNames = ARMOR_SUBCLASS[locale] ?? ARMOR_SUBCLASS.en;
+  const weaponNames = WEAPON_SUBCLASS[locale] ?? WEAPON_SUBCLASS.en;
+  const bindNames = BIND_TEXT[locale] ?? BIND_TEXT.en;
+  const typeLabel = c.cls === 4 ? armorNames[c.sub] : c.cls === 2 ? weaponNames[c.sub] : null;
 
   return {
     name: it.name, quality: it.quality, primary, stamina, secondary, weapon, armor, typeLabel,
-    bindText: BIND_TEXT[it.bonding] ?? null,
+    bindText: bindNames[it.bonding] ?? null,
     requiredLevel: it.requiredLevel > 1 ? it.requiredLevel : null,
   };
 }

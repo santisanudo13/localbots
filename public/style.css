@@ -324,34 +324,49 @@ button.mini {
   border: 1px solid var(--border);
   white-space: nowrap;
 }
-#gear-list {
-  max-height: 320px;
-  overflow-y: auto;
+/* Top Gear's "Items to compare", Raidbots-style: one block per slot, each a
+   3-column grid of clickable item cards (click toggles the hidden checkbox),
+   rather than a small scrolling checkbox list -- this is the biggest single
+   piece of the setup page now that it has the room for it. */
+.gear-slot-block { margin: 14px 0; }
+.gear-slot-heading {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.gear-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+}
+.gear-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 6px 10px;
   background: var(--panel-2);
-}
-#gear-list .gear-group {
-  color: var(--muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 8px 0 4px;
-}
-#gear-list label {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 14px;
-  padding: 2px 0;
   cursor: pointer;
 }
+.gear-card:has(.gear-card-check:checked) { border-color: var(--accent); background: rgba(242, 177, 53, 0.08); }
+.gear-card-check { position: absolute; opacity: 0; pointer-events: none; }
+.gear-card-icon { flex: none; }
+.gear-card-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.gear-card-name { font-size: 14px; }
+.gear-card-section {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.gear-card .search-remove { flex: none; align-self: flex-start; }
 #gear-list input { accent-color: var(--accent); }
 #gear-list .ilvl {
   color: var(--muted);
   font-size: 12px;
-  margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
 .ilvl-select, .ilvl-custom {
@@ -904,6 +919,24 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   align-items: center;
   gap: 8px;
 }
+.row-menu-col { width: 28px; }
+.row-menu-cell { position: relative; text-align: center; }
+.row-menu-toggle {
+  background: none; border: none; color: var(--muted); font-size: 16px;
+  padding: 2px 8px; line-height: 1; border-radius: 5px;
+}
+.row-menu-toggle:hover { color: var(--text); background: var(--panel-2); }
+.row-menu-panel {
+  position: absolute; right: 0; top: 100%; z-index: 20;
+  display: flex; flex-direction: column; min-width: 160px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); padding: 4px;
+}
+.row-menu-panel button {
+  background: none; border: none; color: var(--text); text-align: left;
+  font-size: 13px; font-weight: 500; padding: 7px 10px; border-radius: 5px;
+}
+.row-menu-panel button:hover { background: var(--panel-2); }
 .share-bar .track {
   flex: 1;
   height: 8px;
@@ -1056,6 +1089,13 @@ span.char-item.missing,
   position: absolute; right: -4px; bottom: -4px; width: 14px; height: 14px;
   display: flex; align-items: center; justify-content: center; border-radius: 50%;
   background: var(--accent); color: #1a1405; border: 1.5px solid var(--bg);
+}
+/* crafted item's quality roll (1-5), opposite corner from the catalyst badge */
+.craft-badge {
+  position: absolute; left: -4px; bottom: -4px; width: 14px; height: 14px;
+  display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  background: #a335ee; color: #fff; border: 1.5px solid var(--bg);
+  font-size: 9px; font-weight: 700; line-height: 1;
 }
 /* enchant/gem subline under an item's name (mirrors the downloaded report) */
 .enchgem { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }

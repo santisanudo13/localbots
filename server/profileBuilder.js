@@ -233,6 +233,11 @@ export function buildTopGearInput(profileText, options, items, setCtx = null, ge
       const catalystFromId = Number(rest.match(/(?:^|,)redirected_base_stats=(\d+)/)?.[1]) || null;
       sets[name] = {
         group: index, // one group per source item, across its placements
+        // the exact line this candidate was simmed with -- lets the results
+        // view splice it into the pasted profile verbatim for a "Run in
+        // Quick Sim" pivot, instead of reconstructing an approximation from
+        // itemId/ilvl (and losing bonus_ids, crafted stats, gems, ...)
+        line: `${placement}=${rest}`,
         ...(offHandLost ? { offHandLost: true } : {}),
         ...(catalystFromId
           ? { catalysed: true, catalystFromId, catalystFromName: item.catalystFrom ?? null }
