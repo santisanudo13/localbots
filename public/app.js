@@ -423,9 +423,11 @@ function renderCompareGroups() {
     if (cat.startsWith('_') || !Array.isArray(choices)) continue;
     const usable = choices.filter((c) => c.dps !== false);
     ench.push(`<div class="cg-slot-head">${esc(SLOT_TITLE_KEYS[cat] ? tr(SLOT_TITLE_KEYS[cat]) : cat)}</div>`);
+    const catLabelRaw = SLOT_TITLE_KEYS[cat] ? tr(SLOT_TITLE_KEYS[cat]).replace(/\s*\(.*\)$/, '') : cat;
+    const catLabel = catLabelRaw.charAt(0).toLowerCase() + catLabelRaw.slice(1);
     ench.push(usable.length
       ? usable.map((c) => optionRow('enchants', cat, c.id, c.label)).join('')
-      : `<div class="cg-opt hint-inline">${esc(tr('compare.noDpsEnchant').replace('{cat}', cat))}</div>`);
+      : `<div class="cg-opt hint-inline">${esc(tr('compare.noDpsEnchant').replace('{cat}', catLabel))}</div>`);
   }
   groups.push(['enchants', tr('compare.enchants'), ench.join('')]);
 
@@ -455,8 +457,8 @@ function renderCompareGroups() {
         <span class="hint-inline cg-count" data-count="${id}"></span></label>
       <div class="cg-panel hidden">
         <div class="gear-toolbar">
-          <button class="mini cg-all" data-target="${id}">All</button>
-          <button class="mini cg-none" data-target="${id}">None</button>
+          <button class="mini cg-all" data-target="${id}">${esc(tr('gear.all'))}</button>
+          <button class="mini cg-none" data-target="${id}">${esc(tr('gear.none'))}</button>
         </div>
         <div class="cg-options">${body}</div>
       </div>

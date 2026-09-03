@@ -333,9 +333,13 @@ app.get('/api/patches', (req, res) => {
 // patch's data has been refreshed at least once, ItemSparse.csv (already
 // downloaded for the droptimizer/stat-tooltip machinery) has their name in
 // that language -- this swaps season.json's hand-written English label for
-// it wherever a real id is known. Enchant options have no such id (an
-// enchant_id is a SpellItemEnchantment row, not an item) and consumable
-// options only carry a simc value string, so both stay in English.
+// it wherever a real id is known. Enchant options have no item id (an
+// enchant_id is a SpellItemEnchantment row, not an item), but that table's
+// own Name_lang column does carry a real localized name (see
+// loadEnchantNames / p.enchantNames, added for enchant hovercards) --
+// relabelled the same way once it's available. Consumable options only
+// carry a simc value string with no name table at all, so those alone stay
+// in English (the client shows them via its own consumable-label i18n).
 function localizeSeasonConfig(config, p) {
   if (!config || p.locale === 'en') return config;
   p.itemTables ??= loadItemTables(p.paths.cacheDir);
@@ -351,6 +355,15 @@ function localizeSeasonConfig(config, p) {
       ...out.diamondOptions,
       options: out.diamondOptions.options.map((d) => ({ ...d, label: relabel(d.id) ?? d.label })),
     };
+  }
+  if (out.enchantOptions && p.enchantNames?.size) {
+    const relabelEnchant = (id) => p.enchantNames.get(Number(id)) ?? null;
+    out.enchantOptions = Object.fromEntries(
+      Object.entries(out.enchantOptions).map(([cat, choices]) => [
+        cat,
+        Array.isArray(choices) ? choices.map((c) => ({ ...c, label: relabelEnchant(c.id) ?? c.label })) : choices,
+      ]),
+    );
   }
   return out;
 }
