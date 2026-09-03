@@ -2182,6 +2182,10 @@ function renderTopGear(r) {
   // the enchant subline is now always visible (not just on hover), so warm
   // its cache up front instead of showing "enchant #NNNN" until first hover
   warmEnchantNames(tgEquipped);
+  // gems link Wowhead's widget straight off their real item id (no warm-up
+  // fetch needed, unlike enchants) -- just make sure the widget script is
+  // loaded and has scanned the page's freshly-rendered [data-wowhead] links
+  loadWowheadWidget().then(refreshWowheadLinks);
 
   // filter chips (droptimizer runs have many sections; top gear has few)
   const sections = [...new Set(tgRows.map((t) => t.section))];
@@ -2276,6 +2280,7 @@ function renderTopGearRows() {
   document.querySelector('#topgear-table tbody').innerHTML =
     visible.map((t) => rowHtml(t, maxAbs)).join('') || '<tr><td colspan="6">No results match the filter.</td></tr>';
   paintItemIcons(document.querySelector('#topgear-table'));
+  refreshWowheadLinks(); // gem sublines just rendered fresh [data-wowhead] links
 }
 
 // the crafter's two chosen secondaries, read straight out of the exact simmed
@@ -2550,6 +2555,7 @@ document.querySelectorAll('.result-tab').forEach((tab) => {
     $('tg-filters').classList.toggle('hidden', best || !tgShowFilters);
     if (best) renderBestSetup();
     else renderTopGearGrid();
+    refreshWowheadLinks();
   });
 });
 
@@ -2917,7 +2923,14 @@ function enchGemSubline(enchantId, gemIds) {
   }
   for (const g of gemIds ?? []) {
     const gInfo = { name: gemOrEnchantLabel(g, 'gem'), mini: true };
-    parts.push(`<span class="enchgem-item" ${tileDataAttrs(g, gInfo)}>${itemTile(g, gInfo)} ${esc(gInfo.name)}</span>`);
+    // a gem carries a real item id already (no offset-guessing needed, unlike
+    // an enchant), but our own item hovercard still comes up empty for one:
+    // itemStats() requires an ilvl to compute anything, and gems are not
+    // itemized/leveled -- so link Wowhead's widget here too, straight off
+    // the real id (see the enchant case above for the language handling).
+    const gemWhHost = lang === 'es' ? 'es.wowhead.com' : 'www.wowhead.com';
+    const gemWhId = lang === 'es' ? `es:item=${g}` : `item=${g}`;
+    parts.push(`<a class="enchgem-item" href="https://${gemWhHost}/item=${g}" data-wowhead="${gemWhId}" target="_blank" rel="noopener">${itemTile(g, gInfo)} ${esc(gInfo.name)}</a>`);
   }
   return parts.length ? `<span class="hint-inline block enchgem">${parts.join('')}</span>` : '';
 }
