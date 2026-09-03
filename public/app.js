@@ -101,6 +101,18 @@ const I18N = {
     'loadout.noSaved': 'No saved loadouts in this export — save one in game and re-copy /simc.',
     'loadout.cantDraw': "Builds still sim — they just can't be drawn.",
     'loadout.hero': 'hero',
+    'enchSlot.weapon': 'Weapon (dual-wielders sim every MH × OH combination)',
+    'enchSlot.chest': 'Chest', 'enchSlot.head': 'Head', 'enchSlot.feet': 'Feet', 'enchSlot.legs': 'Legs',
+    'enchSlot.ring': 'Rings (every pair combination)',
+    'compare.consumables': 'Consumables', 'compare.enchants': 'Enchants', 'compare.gems': 'Gems',
+    'compare.omniumFolio': 'Omnium Folio', 'compare.talentBuilds': 'Talent builds',
+    'compare.weaponOil': 'Weapon oil', 'compare.flask': 'Flask', 'compare.food': 'Food', 'compare.potion': 'Potion',
+    'compare.noDpsEnchant': "no DPS-affecting {cat} enchant this season — this season's only give tertiary stats",
+    'compare.statGems': 'Stat gems (whole setup swapped per gem)',
+    'compare.eversongDiamonds': 'Eversong Diamonds (swapped in your diamond socket)',
+    'compare.folioHint': 'Every rune that can move DPS, one row at a time{skipped}. Needs the omnium_talents line from a current /simc export.',
+    'compare.folioSkipped': ' ({n} defensive row{s} left out — healing, absorbs and movement speed)',
+    'compare.talentsPlaceholder': 'Paste your /simc export — your in-game builds appear here.',
     'h2.lootSources': 'Loot sources', 'dropt.includeAll': 'Include everything',
     'dropt.refresh': 'Refresh data', 'dropt.refreshTitle': 'Re-download game data from wago.tools (updates with game patches)',
     'dropt.upgradeItems': 'Upgrade items to',
@@ -220,6 +232,18 @@ const I18N = {
     'loadout.noSaved': 'No hay builds guardadas en este export — guarda una en el juego y vuelve a copiar /simc.',
     'loadout.cantDraw': 'Las builds se simulan igual — solo no se pueden dibujar.',
     'loadout.hero': 'heroica',
+    'enchSlot.weapon': 'Arma (a dos manos simula cada combinación de mano principal × secundaria)',
+    'enchSlot.chest': 'Pecho', 'enchSlot.head': 'Cabeza', 'enchSlot.feet': 'Pies', 'enchSlot.legs': 'Piernas',
+    'enchSlot.ring': 'Anillos (cada combinación de par)',
+    'compare.consumables': 'Consumibles', 'compare.enchants': 'Encantamientos', 'compare.gems': 'Gemas',
+    'compare.omniumFolio': 'Folio Omnium', 'compare.talentBuilds': 'Builds de talentos',
+    'compare.weaponOil': 'Aceite de arma', 'compare.flask': 'Frasco', 'compare.food': 'Comida', 'compare.potion': 'Poción',
+    'compare.noDpsEnchant': 'ningún encantamiento de {cat} afecta al DPS esta temporada — este slot solo da estadísticas terciarias',
+    'compare.statGems': 'Gemas de estadística (todo el setup intercambiado por gema)',
+    'compare.eversongDiamonds': 'Diamantes de Canción Eterna (intercambiados en tu engarce de diamante)',
+    'compare.folioHint': 'Cada runa que puede mover el DPS, una fila a la vez{skipped}. Necesita la línea omnium_talents de un export /simc actual.',
+    'compare.folioSkipped': ' ({n} fila{s} defensiva{s} omitida{s} — curación, absorciones y velocidad de movimiento)',
+    'compare.talentsPlaceholder': 'Pega tu export /simc — tus builds del juego aparecerán aquí.',
     'h2.lootSources': 'Fuentes de botín', 'dropt.includeAll': 'Incluir todo',
     'dropt.refresh': 'Actualizar datos', 'dropt.refreshTitle': 'Vuelve a descargar los datos del juego desde wago.tools (se actualiza con los parches)',
     'dropt.upgradeItems': 'Mejorar objetos a',
@@ -372,10 +396,9 @@ function renderPatchSwitch() {
 // ---------- "Also compare" pickers ----------
 // Each group: header checkbox + expandable panel of options (all on by
 // default, All/None buttons). Selections narrow what gets simmed.
-const SLOT_TITLES = {
-  weapon: 'Weapon (dual-wielders sim every MH × OH combination)',
-  chest: 'Chest', head: 'Head', feet: 'Feet', legs: 'Legs',
-  ring: 'Rings (every pair combination)',
+const SLOT_TITLE_KEYS = {
+  weapon: 'enchSlot.weapon', chest: 'enchSlot.chest', head: 'enchSlot.head',
+  feet: 'enchSlot.feet', legs: 'enchSlot.legs', ring: 'enchSlot.ring',
 };
 
 function renderCompareGroups() {
@@ -388,39 +411,43 @@ function renderCompareGroups() {
   const cons = [];
   for (const [cat, choices] of Object.entries(season.consumableOptions ?? {})) {
     if (cat.startsWith('_') || !Array.isArray(choices)) continue;
-    cons.push(`<div class="cg-slot-head">${esc(cat === 'temporary_enchant' ? 'Weapon oil' : cat[0].toUpperCase() + cat.slice(1))}</div>`);
+    const consLabelKey = { temporary_enchant: 'compare.weaponOil', flask: 'compare.flask', food: 'compare.food', potion: 'compare.potion' }[cat];
+    cons.push(`<div class="cg-slot-head">${esc(consLabelKey ? tr(consLabelKey) : cat[0].toUpperCase() + cat.slice(1))}</div>`);
     cons.push(...choices.map((c) => optionRow('consumables', cat, c.value, c.label)));
   }
-  groups.push(['consumables', 'Consumables', cons.join('')]);
+  groups.push(['consumables', tr('compare.consumables'), cons.join('')]);
 
   // enchants — options measured as having no DPS effect are left out
   const ench = [];
   for (const [cat, choices] of Object.entries(season.enchantOptions ?? {})) {
     if (cat.startsWith('_') || !Array.isArray(choices)) continue;
     const usable = choices.filter((c) => c.dps !== false);
-    ench.push(`<div class="cg-slot-head">${esc(SLOT_TITLES[cat] ?? cat)}</div>`);
+    ench.push(`<div class="cg-slot-head">${esc(SLOT_TITLE_KEYS[cat] ? tr(SLOT_TITLE_KEYS[cat]) : cat)}</div>`);
     ench.push(usable.length
       ? usable.map((c) => optionRow('enchants', cat, c.id, c.label)).join('')
-      : `<div class="cg-opt hint-inline">no DPS-affecting ${esc(cat)} enchant this season — this season's only give tertiary stats</div>`);
+      : `<div class="cg-opt hint-inline">${esc(tr('compare.noDpsEnchant').replace('{cat}', cat))}</div>`);
   }
-  groups.push(['enchants', 'Enchants', ench.join('')]);
+  groups.push(['enchants', tr('compare.enchants'), ench.join('')]);
 
   // gems + diamonds
-  const gems = ['<div class="cg-slot-head">Stat gems (whole setup swapped per gem)</div>'];
+  const gems = [`<div class="cg-slot-head">${esc(tr('compare.statGems'))}</div>`];
   gems.push(...(season.gemOptions ?? []).map((g) => optionRow('gems', 'gems', g.id, g.label)));
-  gems.push('<div class="cg-slot-head">Eversong Diamonds (swapped in your diamond socket)</div>');
+  gems.push(`<div class="cg-slot-head">${esc(tr('compare.eversongDiamonds'))}</div>`);
   gems.push(...(season.diamondOptions?.options ?? []).map((d) => optionRow('gems', 'diamonds', d.id, d.label)));
-  groups.push(['gems', 'Gems', gems.join('')]);
+  groups.push(['gems', tr('compare.gems'), gems.join('')]);
 
   // folio (no picker — the runes are always cheap to sim)
   const folioRows = (season.omniumFolio?.rows ?? []).filter((r) => r.choices.some((c) => c.dps !== false));
   const folioSkipped = (season.omniumFolio?.rows ?? []).length - folioRows.length;
-  groups.push(['folio', 'Omnium Folio',
-    `<p class="hint">Every rune that can move DPS, one row at a time${folioSkipped ? ` (${folioSkipped} defensive row${folioSkipped === 1 ? '' : 's'} left out — healing, absorbs and movement speed)` : ''}. Needs the omnium_talents line from a current /simc export.</p>`]);
+  const skippedText = folioSkipped
+    ? tr('compare.folioSkipped').replace(/\{n\}/g, folioSkipped).replace(/\{s\}/g, folioSkipped === 1 ? '' : 's')
+    : '';
+  groups.push(['folio', tr('compare.omniumFolio'),
+    `<p class="hint">${esc(tr('compare.folioHint').replace('{skipped}', skippedText))}</p>`]);
 
   // talent builds (cards come from the pasted export, filled by refreshGearList)
-  groups.push(['talents', 'Talent builds',
-    '<div id="talent-loadout-options"><p class="hint">Paste your /simc export — your in-game builds appear here.</p></div>']);
+  groups.push(['talents', tr('compare.talentBuilds'),
+    `<div id="talent-loadout-options"><p class="hint">${esc(tr('compare.talentsPlaceholder'))}</p></div>`]);
 
   $('compare-groups').innerHTML = groups.map(([id, title, body]) => `
     <div class="compare-group" data-group="${id}">
