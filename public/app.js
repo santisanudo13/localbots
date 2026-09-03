@@ -2991,9 +2991,13 @@ let enchantNameFetch = null;
 // the season's curated comparison list (gemOrEnchantLabel finds those on its
 // own, no fetch needed).
 async function warmEnchantNames(equipped) {
+  // fetch the real (locale-correct) name for every equipped enchant not yet
+  // cached -- including ones the curated comparison list already has a
+  // (English-only) label for, since the real name now wins over that (see
+  // gemOrEnchantLabel)
   const ids = [...new Set(Object.values(equipped ?? {})
     .map((eq) => eq?.enchantId).filter(Boolean))]
-    .filter((id) => !enchantNameCache.has(id) && gemOrEnchantLabel(id, 'enchant') === `enchant #${id}`);
+    .filter((id) => !enchantNameCache.has(id));
   if (!ids.length) return;
   try {
     const r = await fetch(`/api/enchant-names?ids=${ids.join(',')}&patch=${encodeURIComponent(patch)}&lang=${encodeURIComponent(lang)}`);
@@ -3028,12 +3032,20 @@ async function fetchEnchantName(id, onReady) {
 // name, fetched on demand) and finally to the raw id.
 function gemOrEnchantLabel(id, kind) {
   if (kind === 'enchant') {
+    // the game client's own name (see server/wagoData.js's loadEnchantNames)
+    // is fetched per the CURRENT language and wins over the season config's
+    // curated comparison list, which is hand-written English only -- matches
+    // how the downloaded report already prioritizes these (see
+    // enchGemLabelsFrom in server/index.js). Falls back to the curated label
+    // (still meaningful, just English) until warmEnchantNames'/
+    // fetchEnchantName's request lands and triggers a redraw.
+    const cached = enchantNameCache.get(Number(id));
+    if (cached) return cached;
     for (const arr of Object.values(season?.enchantOptions ?? {})) {
       const m = Array.isArray(arr) && arr.find((e) => String(e.id) === String(id));
       if (m) return m.label;
     }
-    const cached = enchantNameCache.get(Number(id));
-    return cached ?? `enchant #${id}`;
+    return `enchant #${id}`;
   }
   const g = (season?.gemOptions ?? []).find((g) => String(g.id) === String(id))
     ?? (season?.diamondOptions?.options ?? []).find((x) => String(x.id) === String(id));
