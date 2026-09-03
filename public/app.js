@@ -276,7 +276,6 @@ function renderLangSwitch() {
       applyI18n(); // whole interface, not just item/set/loot game-data text
       $('sim-button').textContent = simLabel(mode);
       // language-specific state is stale now, same as a patch switch
-      statCache.clear(); // item stat/effect tooltips carry set-bonus text in the old language
       enchantNameCache.clear();
       equippedItems = null;
       delete $('tu-list').dataset.rendered;
@@ -1084,6 +1083,7 @@ async function runItemSearch(q) {
     </button>`).join('')
     + (body.truncated ? '<p class="hint">More matches than shown — narrow your search.</p>' : '');
   paintItemIcons(results);
+  loadWowheadWidget().then(refreshWowheadLinks); // search rows carry data-wowhead too, same as any other item icon
   results.querySelectorAll('button.search-result').forEach((btn, idx) => {
     btn.addEventListener('click', () => addSearchItem(body.items[idx]));
   });
@@ -1303,10 +1303,29 @@ async function refreshGearList() {
   const bySlot = {};
   gearItems.forEach((item, i) => { (bySlot[item.slot] ??= []).push({ item, i }); });
   const slots = SLOT_ORDER.filter((s) => bySlot[s]);
+  // equipped always leads its slot's list -- it's the fixed baseline, so it
+  // reads naturally as "here's what you have, here's what could replace it" --
+  // then reflow into column-major order (fill column 1 top-to-bottom, then
+  // column 2, ...) so the plain row-major CSS grid below reads that way too.
+  for (const slot of slots) {
+    bySlot[slot].sort((a, b) => (b.item.section === 'Equipped') - (a.item.section === 'Equipped'));
+    const cols = Math.min(4, bySlot[slot].length) || 1;
+    const rows = Math.ceil(bySlot[slot].length / cols);
+    const flat = bySlot[slot];
+    const ordered = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const item = flat[c * rows + r];
+        if (item) ordered.push(item);
+      }
+    }
+    bySlot[slot] = ordered;
+    bySlot[slot]._cols = cols;
+  }
   $('gear-list').innerHTML = slots.map((slot) => `
     <div class="gear-slot-block">
       <h3 class="gear-slot-heading">${esc(prettySlot(slot))} (${bySlot[slot].length})</h3>
-      <div class="gear-slot-grid">
+      <div class="gear-slot-grid" style="--gear-cols: ${bySlot[slot]._cols}">
         ${bySlot[slot].map(({ item, i }) => {
           const info = {
             name: item.name, ilvl: item.targetIlvl ?? item.ilvl, slot: prettySlot(item.slot),
@@ -2273,6 +2292,7 @@ function renderTopGearRows() {
       `<tr class="slot-group-row"><td colspan="6">${esc(boss ?? '')}</td></tr>` +
       rows.map((t) => rowHtml(t, maxAbs)).join('')).join('') || '<tr><td colspan="6">No results match the filter.</td></tr>';
     paintItemIcons(document.querySelector('#topgear-table'));
+    refreshWowheadLinks();
     return;
   }
 
@@ -2819,8 +2839,15 @@ let iconFetch = null; // in-flight batch, so a burst of renders makes one reques
 // not just the icon -- see topGearRowHtml() and renderTopGearGrid().
 function tileDataAttrs(id, info = {}) {
   const q = info.quality ?? 4;
+  // real items always carry their own real id (unlike an enchant, which
+  // needs an offset-guess, or a gem/enchant tooltip our own itemStats()
+  // can't compute) -- link Wowhead's widget straight off it, same as gems
+  // and enchants, for one consistent hovercard source everywhere instead of
+  // our own separately-maintained fetch+render pipeline
+  const wowhead = id ? (lang === 'es' ? `es:item=${Number(id)}` : `item=${Number(id)}`) : '';
   return [
     `data-item="${Number(id) || 0}"`,
+    wowhead ? `data-wowhead="${wowhead}"` : '',
     // a catalysed piece keeps the stats of what it was made from
     info.statSource ? `data-statsrc="${Number(info.statSource)}"` : '',
     info.name ? `data-name="${esc(info.name)}"` : '',
@@ -2851,7 +2878,14 @@ function itemTile(id, info = {}) {
   const data = tileDataAttrs(id, info);
   const cls = `item-tile q${q}${info.mini ? ' mini-icon' : ''}`;
   if (!id) return `<span class="${cls} missing" ${data}></span>`;
-  return `<img class="${cls}" alt="" ${data}>`;
+  const img = `<img class="${cls}" alt="" ${data}>`;
+  if (info.noLink) return img;
+  // Wowhead's widget only auto-attaches its hover tooltip to <a> elements,
+  // never to a bare <img> -- confirmed live: a plain data-wowhead <img> never
+  // fired a tooltip request, wrapping the same element in an <a> did.
+  const whHost = lang === 'es' ? 'es.wowhead.com' : 'www.wowhead.com';
+  const wowhead = lang === 'es' ? `es:item=${Number(id)}` : `item=${Number(id)}`;
+  return `<a class="item-tile-link" href="https://${whHost}/item=${Number(id)}" data-wowhead="${wowhead}" target="_blank" rel="noopener">${img}</a>`;
 }
 
 // Small flask badge over an item's icon: a catalyzed row already shows the
@@ -2922,7 +2956,7 @@ function enchGemSubline(enchantId, gemIds) {
       : `<span class="enchgem-item" data-name="${esc(name)}" data-source="Enchant">${inner}</span>`);
   }
   for (const g of gemIds ?? []) {
-    const gInfo = { name: gemOrEnchantLabel(g, 'gem'), mini: true };
+    const gInfo = { name: gemOrEnchantLabel(g, 'gem'), mini: true, noLink: true };
     // a gem carries a real item id already (no offset-guessing needed, unlike
     // an enchant), but our own item hovercard still comes up empty for one:
     // itemStats() requires an ilvl to compute anything, and gems are not
@@ -2977,38 +3011,7 @@ function itemTip() {
   return tipEl;
 }
 
-// stats per "id:ilvl", fetched the first time an item is hovered
-const statCache = new Map();
 let tipToken = 0;
-
-function statLines(s) {
-  if (!s) return '';
-  const out = [];
-  if (s.weapon) {
-    out.push(`<div class="tip-stat">${s.weapon.min} - ${s.weapon.max} Damage`
-      + `<span class="tip-speed">Speed ${s.weapon.speed.toFixed(2)}</span></div>`);
-    out.push(`<div class="tip-dim">(${s.weapon.dps.toFixed(1)} damage per second)</div>`);
-  }
-  if (s.armor) out.push(`<div class="tip-stat">${s.armor.toLocaleString()} Armor</div>`);
-  for (const p of s.primary ?? []) out.push(`<div class="tip-stat">+${p.value.toLocaleString()} ${esc(p.name)}</div>`);
-  if (s.stamina) out.push(`<div class="tip-stat">+${s.stamina.value.toLocaleString()} Stamina</div>`);
-  for (const r of s.secondary ?? []) out.push(`<div class="tip-sec">+${r.value.toLocaleString()} ${esc(r.name)}</div>`);
-  if (s.set) {
-    const pieces = (s.set.items ?? []).filter((it) => it.name)
-      .map((it) => `<li>${esc(it.name)}</li>`).join('');
-    const rows = s.set.bonuses.map((b) => `<div class="tip-setb">(${b.threshold}) Set: ${esc(b.text.replace(/\n+/g, ' '))}</div>`).join('');
-    out.push(`<div class="tip-set"><div class="tip-setname">${esc(s.set.name)} (${s.set.pieces}-piece set)</div>`
-      + (pieces ? `<ul class="tip-setlist">${pieces}</ul>` : '') + rows + '</div>');
-  }
-  for (const e of s.effects ?? []) {
-    const label = e.trigger ? `${esc(e.trigger)}: ` : '';
-    const body = e.text.split('\n').filter((l) => l.trim())
-      .map((l, i) => `<div class="tip-fx-line">${i === 0 ? `<b>${label}</b>` : ''}${esc(l)}</div>`).join('');
-    const cd = e.cooldown ? `<div class="tip-dim">(${esc(e.cooldown)} cooldown)</div>` : '';
-    out.push(`<div class="tip-fx">${body}${cd}</div>`);
-  }
-  return out.join('');
-}
 
 // enchant id -> its real name ("Enchant Chest - Mark of the Worldsoul"),
 // fetched from the game client's own data (see /api/enchant-names) the first
@@ -3049,6 +3052,10 @@ function loadWowheadWidget() {
 function refreshWowheadLinks() {
   window.$WowheadPower?.refreshLinks?.();
 }
+// every item tile now links Wowhead's widget (see tileDataAttrs) -- items
+// show up almost everywhere (char card, gear list, every results table), so
+// load it up front rather than waiting for the first enchant/gem hover
+loadWowheadWidget();
 
 // Prefetches every equipped slot's enchant name in one request, so "Your Top
 // Gear" and Details show the real name straight away instead of "enchant
@@ -3131,25 +3138,19 @@ function gemOrEnchantLabel(id, kind) {
 // title-case: slot/track names arrive in simc's lowercase form
 const titleCase = (s) => String(s).replace(/\b\w/g, (c) => c.toUpperCase());
 
-// A wow.tools/Raidbots-style item card: name, upgrade track, binding, slot +
-// armor/weapon type, stats, enchant/gems, requirements, set bonuses. `s` is
-// this item's fetched /api/items entry (null until it lands — see
-// showItemTip), so everything sourced from it is missing on the first,
-// synchronous render and fades in on the redraw once the fetch resolves.
-function tipShell(d, s) {
+// A bare-name hovercard for whatever has no Wowhead-resolvable id -- a
+// missing/unknown item, or an enchant that never resolved a spell/scroll id
+// (see fetchEnchantName). Every item, gem and resolvable enchant now links
+// Wowhead's own widget instead (see tileDataAttrs / enchGemSubline), which
+// has real, verified numbers this app has no correct local formula for.
+function tipShell(d) {
   const rows = [];
   if (d.ilvl) rows.push(`<div class="tip-ilvl">Item Level ${esc(d.ilvl)}</div>`);
   if (d.track && d.trackStep && d.trackMax) {
     const tier = (TRACK_TAG[d.track] ?? '').toLowerCase();
     rows.push(`<div class="tip-track${tier ? ` tier-${tier}` : ''}">Upgrade Level: ${esc(d.track)} ${esc(d.trackStep)}/${esc(d.trackMax)}</div>`);
   }
-  if (s?.bindText) rows.push(`<div class="tip-dim">${esc(s.bindText)}</div>`);
-  if (d.slot || s?.typeLabel) {
-    rows.push(`<div class="tip-slot-row">${d.slot ? `<span class="tip-slot">${esc(titleCase(d.slot))}</span>` : ''}${
-      s?.typeLabel ? `<span class="tip-type">${esc(s.typeLabel)}</span>` : ''}</div>`);
-  }
-  const statsHtml = statLines(s);
-  if (statsHtml) rows.push(`<div class="tip-stats">${statsHtml}</div>`);
+  if (d.slot) rows.push(`<div class="tip-slot-row"><span class="tip-slot">${esc(titleCase(d.slot))}</span></div>`);
   // enchant/gems this row was actually simmed with (carried from the
   // currently-equipped item in this slot -- see gemOrEnchantLabel above)
   if (d.enchant) {
@@ -3160,11 +3161,7 @@ function tipShell(d, s) {
     const names = d.gems.split(',').map((id) => gemOrEnchantLabel(id, 'gem')).join(', ');
     rows.push(`<div class="tip-sec">Gems: ${esc(names)}</div>`);
   }
-  if (s?.requiredLevel) rows.push(`<div class="tip-dim">Requires Level ${esc(s.requiredLevel)}</div>`);
-  // prefer the freshly-fetched name over the one baked into the sim result
-  // row at sim time (`d.name`, in whatever language was active then) --
-  // `s.name` always reflects the currently-selected language
-  return `<div class="tip-name q${esc(d.quality ?? 4)}">${esc(s?.name ?? d.name ?? 'Item')}</div>`
+  return `<div class="tip-name q${esc(d.quality ?? 4)}">${esc(d.name ?? 'Item')}</div>`
     + rows.join('')
     + (d.source ? `<div class="tip-source">${esc(d.source)}</div>` : '');
 }
@@ -3173,38 +3170,21 @@ function showItemTip(el) {
   const d = el.dataset;
   if (!d.name && !d.item) return;
   const tip = itemTip();
-  const id = Number(d.item);
-  const ilvl = Number(d.ilvl);
-  const src = Number(d.statsrc) || 0;
-  const craft = d.craftstats ?? ''; // "32-49" -- the crafter's two chosen secondaries
-  const key = id && ilvl ? `${id}:${ilvl}:${src || ''}${craft ? `:${craft}` : ''}` : null;
-
-  tip.innerHTML = tipShell(d, key ? statCache.get(key) : null);
+  tip.innerHTML = tipShell(d);
   tip.classList.remove('hidden');
   positionTip(el);
 
-  const token = ++tipToken;
-  const redraw = () => {
-    if (token !== tipToken || tip.classList.contains('hidden')) return;
-    tip.innerHTML = tipShell(d, key ? statCache.get(key) : null);
-    positionTip(el);
-  };
-
   // an enchant outside the season's curated comparison list needs its real
-  // name fetched on demand (see fetchEnchantName above); redraw once it lands
+  // name (and, when it resolves, a Wowhead id) fetched on demand -- redraw
+  // once it lands so the card picks up the fresh name in the meantime
   if (d.enchant && !enchantNameCache.has(Number(d.enchant))) {
-    fetchEnchantName(Number(d.enchant), redraw);
+    const token = ++tipToken;
+    fetchEnchantName(Number(d.enchant), () => {
+      if (token !== tipToken || tip.classList.contains('hidden')) return;
+      tip.innerHTML = tipShell(d);
+      positionTip(el);
+    });
   }
-
-  if (!key || statCache.has(key)) return;
-  // fetch once, then redraw if the pointer is still on this item
-  fetch(`/api/items?q=${key}&patch=${encodeURIComponent(patch)}&lang=${encodeURIComponent(lang)}`)
-    .then((r) => r.json())
-    .then((j) => {
-      statCache.set(key, j.items?.[key] ?? null);
-      redraw();
-    })
-    .catch(() => statCache.set(key, null));
 }
 
 function positionTip(el) {

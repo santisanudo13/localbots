@@ -112,7 +112,8 @@ header h1 {
    rather than a cramped fixed sidebar next to results. */
 main {
   padding: 18px 22px 96px; /* bottom padding clears the fixed sim-bar */
-  max-width: 1100px;
+  width: 80%;
+  max-width: 1800px;
   margin: 0 auto;
 }
 
@@ -337,15 +338,18 @@ button.mini {
   margin: 0 0 6px;
 }
 .gear-slot-grid {
+  /* app.js pre-orders each slot's items into column-major order (equipped
+     first, top of column 1) and fixes the same column count used here, so a
+     plain row-major grid renders them reading top-to-bottom per column. */
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(var(--gear-cols, 4), 1fr);
+  gap: 10px;
 }
 .gear-card {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 10px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel-2);
@@ -365,6 +369,10 @@ button.mini {
   letter-spacing: 0.5px;
 }
 .gear-card .search-remove { flex: none; align-self: flex-start; }
+/* bigger, Raidbots-style icon for gear cards -- the compact 26px size stays
+   for results tables, which have far less room per row. */
+.gear-card-icon .item-tile { width: 40px; height: 40px; border-radius: 6px; }
+.gear-card-name { font-size: 15px; }
 #gear-list input { accent-color: var(--accent); }
 #gear-list .ilvl {
   color: var(--muted);
@@ -1085,6 +1093,9 @@ span.char-item.missing,
 .item-tile.q3 { border-color: #0070dd; }
 .item-tile.q4 { border-color: #a335ee; }
 .item-tile.q5 { border-color: #ff8000; }
+/* wraps a plain item icon so Wowhead's widget (which only auto-links <a>
+   elements) attaches its hover tooltip -- purely structural, no link styling */
+.item-tile-link { display: inline-flex; flex: none; line-height: 0; }
 /* "catalyzed" badge over an item's icon -- see itemTileWithBadge() */
 .item-tile-wrap { position: relative; display: inline-flex; flex: none; }
 .catalyst-badge {
