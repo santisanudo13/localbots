@@ -915,6 +915,13 @@ span.char-item.missing,
 .item-tile.q3 { border-color: #0070dd; }
 .item-tile.q4 { border-color: #a335ee; }
 .item-tile.q5 { border-color: #ff8000; }
+/* "catalyzed" badge over an item's icon -- see itemTileWithBadge() */
+.item-tile-wrap { position: relative; display: inline-flex; flex: none; }
+.catalyst-badge {
+  position: absolute; right: -4px; bottom: -4px; width: 14px; height: 14px;
+  display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  background: var(--accent); color: #1a1405; border: 1.5px solid var(--bg);
+}
 .item-tile.missing {
   background:
     linear-gradient(135deg, transparent 46%, var(--border) 46%, var(--border) 54%, transparent 54%),

@@ -5,6 +5,7 @@ let eventSource = null;
 let mode = 'quick';
 let gearItems = []; // last parsed bag/vault items, indexes match checkboxes
 let itemSets = []; // detected item sets from /api/gear
+let catalystSlots = null; // slot -> this class's real current tier piece, from /api/gear
 let setMinimums = {}; // setId -> chosen minimum bonus (0/2/4)
 let season = null; // upgrade tracks + voidcore info from the patch's season config
 
@@ -728,6 +729,7 @@ $('profile').addEventListener('input', () => {
 $('gear-all').addEventListener('click', () => setAllGear(true));
 $('gear-none').addEventListener('click', () => setAllGear(false));
 $('gear-max-upgrade').addEventListener('click', applyMaxAffordableUpgrades);
+$('gear-catalyst-toggle').addEventListener('change', refreshGearList);
 
 // Voidcore toggle is only meaningful on fully upgraded (6/6) items
 $('dropt-upgrade').addEventListener('change', () => {
@@ -799,6 +801,33 @@ function updateGearCount() {
     : '';
 }
 
+// One synthetic "Catalyzed" candidate per non-crafted item that's in a
+// catalyst-eligible slot: the real tier piece it becomes, carrying the
+// looted item's own stats over via redirected_base_stats= (see
+// profileBuilder.js). Skips items with no known ilvl (nothing to redirect
+// from) and items that already ARE the tier piece.
+function catalystEntriesFor(sourceItems) {
+  if (!catalystSlots) return [];
+  const out = [];
+  for (const item of sourceItems) {
+    if (item.crafted) continue;
+    const target = catalystSlots[item.slot];
+    const ilvl = item.targetIlvl ?? item.ilvl;
+    if (!target || !ilvl || target.id === item.id) continue;
+    out.push({
+      name: target.name ?? `${item.name} (catalyzed)`,
+      id: target.id,
+      ilvl,
+      targetIlvl: null,
+      slot: item.slot,
+      section: 'Catalyzed',
+      catalystFrom: item.name,
+      line: `${item.slot}=,id=${target.id},ilevel=${ilvl},redirected_base_stats=${item.id}`,
+    });
+  }
+  return out;
+}
+
 async function refreshGearList() {
   refreshCrestPrices();   // priced ladder for the affordable-upgrade button and summary
   const profile = $('profile').value;
@@ -819,6 +848,15 @@ async function refreshGearList() {
     // the list renders below "Bags" — same checkbox+ilvl-select UI, used to
     // compare "what would upgrading what I already have get me".
     gearItems = [...(body.items ?? []), ...(body.equippedGear ?? [])];
+    catalystSlots = body.catalystSlots ?? null;
+    // "Catalyzed" is a synthetic section: one extra candidate per ticked-
+    // eligible looted item, simmed as the real tier piece it becomes (see
+    // catalystEntriesFor) — appended so it renders as its own gear-list group
+    // via the same bySection logic below, and gets real indices into
+    // gearItems so submitting/ticking it works exactly like any other item.
+    if ($('gear-catalyst-toggle')?.checked) {
+      gearItems = [...gearItems, ...catalystEntriesFor(gearItems)];
+    }
     itemSets = body.itemSets ?? [];
     renderItemSets();
     renderLoadoutOptions(body.talents ?? { available: false, loadouts: body.loadouts ?? [] });
@@ -1755,13 +1793,14 @@ function rowHtml(t, maxAbs) {
           ${esc(c.from)} → <strong>${esc(c.to)}</strong></li>`).join('')}
       </ul></td></tr>`
     : '';
+  const info = {
+    name: t.itemName, ilvl: t.ilvl, slot: prettySlot(t.placement),
+    source: [t.section, t.boss].filter(Boolean).join(' → '),
+  };
   return `
   <tr>
-    <td><span class="gear-icon-row">${itemId ? itemTile(itemId, {
-          name: t.itemName, ilvl: t.ilvl, slot: prettySlot(t.placement),
-          source: [t.section, t.boss].filter(Boolean).join(' → '),
-        }) : ''}<span><span class="${glow ? `item-glow ${glow}` : ''}">${esc(t.itemName ?? '?')}</span>${ilvls}${trackSchemeFor(t.track)}
-        ${t.catalysed ? '<span class="tier-tag" title="Simmed as if you had run this through the Catalyst, so your set bonus stays intact">catalysed</span>' : ''}
+    <td><span class="gear-icon-row">${itemId ? itemTileWithBadge(itemId, info, t) : ''}<span><span class="${glow ? `item-glow ${glow}` : ''}">${esc(t.itemName ?? '?')}</span>${ilvls}${trackSchemeFor(t.track)}
+        ${t.catalysed ? `<span class="tier-tag" title="Catalyzed${t.catalystFromName ? ` from ${esc(t.catalystFromName)}` : ''} — shown as the real tier piece it becomes">catalyzed</span>` : ''}
         ${t.offHandLost ? '<span class="tier-tag warn" title="A two-hander fills both hands, so this was simmed with your off-hand taken off — its stats are not counted">off-hand removed</span>' : ''}
         <span class="slot-tag">→ ${target}</span>${caret}</span></span></td>
     <td><span class="source-tag">${esc(t.section)}</span>${t.boss ? `<span class="src-boss">→ ${esc(t.boss)}</span>` : ''}</td>
@@ -1833,13 +1872,15 @@ function renderBestSetup() {
     // a gain under twice its error bar could still be simulation noise
     const shaky = t.delta < t.error * 2
       ? ' <span class="bs-shaky" title="This gain is small next to the run\'s margin of error — re-run at a higher precision to confirm it">close to the margin</span>' : '';
+    const bsInfo = {
+      name: t.itemName, ilvl: t.ilvl, slot: prettySlot(t.placement),
+      source: [t.section, t.boss].filter(Boolean).join(' → '),
+    };
     return `<li class="bs-item">
         <div class="bs-row">
           <span class="bs-label">${esc(p.label)}</span>
-          <span class="bs-pick"><span class="gear-icon-row">${itemId ? itemTile(itemId, {
-              name: t.itemName, ilvl: t.ilvl, slot: prettySlot(t.placement),
-              source: [t.section, t.boss].filter(Boolean).join(' → '),
-            }) : ''}<span>${esc(t.itemName ?? '?')}${t.ilvl && eq?.ilvl ? ` <span class="ilvl">(${eq.ilvl} → ${t.ilvl})</span>` : ''}${trackSchemeFor(t.track)}</span></span></span>
+          <span class="bs-pick"><span class="gear-icon-row">${itemId ? itemTileWithBadge(itemId, bsInfo, t) : ''}<span>${esc(t.itemName ?? '?')}${t.ilvl && eq?.ilvl ? ` <span class="ilvl">(${eq.ilvl} → ${t.ilvl})</span>` : ''}${trackSchemeFor(t.track)}
+              ${t.catalysed ? `<span class="tier-tag" title="Catalyzed${t.catalystFromName ? ` from ${esc(t.catalystFromName)}` : ''} — shown as the real tier piece it becomes">catalyzed</span>` : ''}</span></span></span>
           <span class="bs-gain delta-pos">+${Math.round(t.delta).toLocaleString()}${shaky}</span>
         </div>
         ${swap}${changes}
@@ -2114,9 +2155,12 @@ const ICON_CDN = 'https://render.worldofwarcraft.com/us/icons/56';
 const iconIds = new Map(); // item id -> file id (null = looked up, has none)
 let iconFetch = null; // in-flight batch, so a burst of renders makes one request
 
-function itemTile(id, info = {}) {
+// Shared by itemTile() and by list rows that want the whole row (icon, name,
+// AND any subline under it) to trigger the same item hovercard, not just the
+// icon.
+function tileDataAttrs(id, info = {}) {
   const q = info.quality ?? 4;
-  const data = [
+  return [
     `data-item="${Number(id) || 0}"`,
     // a catalysed piece keeps the stats of what it was made from
     info.statSource ? `data-statsrc="${Number(info.statSource)}"` : '',
@@ -2126,8 +2170,30 @@ function itemTile(id, info = {}) {
     info.source ? `data-source="${esc(info.source)}"` : '',
     `data-quality="${q}"`,
   ].filter(Boolean).join(' ');
+}
+
+function itemTile(id, info = {}) {
+  const q = info.quality ?? 4;
+  const data = tileDataAttrs(id, info);
   if (!id) return `<span class="item-tile missing q${q}" ${data}></span>`;
   return `<img class="item-tile q${q}" alt="" ${data}>`;
+}
+
+// Small flask badge over an item's icon: a catalyzed row already shows the
+// real tier piece (its itemId/itemName were swapped server-side — see
+// profileBuilder.js), and the badge is what makes that visible at a glance
+// without reading the row's text.
+function catalystBadge(t) {
+  if (!t?.catalysed) return '';
+  const title = `Catalyzed${t.catalystFromName ? ` from ${t.catalystFromName}` : ''} — shown as the tier piece it becomes, not the looted item`;
+  return `<span class="catalyst-badge" title="${esc(title)}">
+    <svg viewBox="0 0 24 24" width="10" height="10"><path d="M9 2v6.3L3.4 19a2 2 0 0 0 1.8 3h13.6a2 2 0 0 0 1.8-3L15 8.3V2M9 2h6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>
+  </span>`;
+}
+
+function itemTileWithBadge(id, info, t) {
+  if (!id) return itemTile(id, info);
+  return `<span class="item-tile-wrap">${itemTile(id, info)}${catalystBadge(t)}</span>`;
 }
 
 // Fill in every tile on the page that does not have its image yet.
