@@ -2889,26 +2889,30 @@ function enchGemSubline(enchantId, gemIds) {
   const parts = [];
   if (enchantId) {
     const name = gemOrEnchantLabel(enchantId, 'enchant');
+    const itemId = enchantItemIdCache.get(Number(enchantId));
     const spellId = enchantSpellIdCache.get(Number(enchantId));
-    // enchants have no item id (they're a SpellItemEnchantment row, not an
-    // item), so this app can't compute its own numeric stat line for one the
-    // way it does for a real item or gem -- there's no reliable local
-    // formula for what an enchant's own effect actually grants (see the
-    // note on /api/enchant-names). When the real spell behind it is known,
-    // link Wowhead's own tooltip widget instead, which has the real,
-    // verified numbers; otherwise fall back to our own name-only hovercard.
-    // Either way the data attrs/link sit on the WRAPPING span/anchor, not
-    // just the icon -- otherwise hovering the name text (not the tiny icon
-    // itself) bubbles past it to the parent item row's own data-item and
-    // shows that item's hovercard instead of the enchant's.
+    // enchants have no item id of their own (they're a SpellItemEnchantment
+    // row, not an item), so this app can't compute its own numeric stat line
+    // for one the way it does for a real item or gem -- there's no reliable
+    // local formula for what an enchant's own effect actually grants (see
+    // the note on /api/enchant-names). Prefer linking Wowhead's tooltip
+    // widget at the enchant's own scroll ITEM (its "Use: Permanently
+    // enchants... by N%" text is reliably complete, verified against three
+    // known enchants), falling back to the granted spell (sometimes empty)
+    // and finally to our own name-only hovercard. Either way the data
+    // attrs/link sit on the WRAPPING span/anchor, not just the icon --
+    // otherwise hovering the name text (not the tiny icon itself) bubbles
+    // past it to the parent item row's own data-item and shows that item's
+    // hovercard instead of the enchant's.
     const inner = `<img class="mini-icon" alt="" src="${ENCHANT_ICON_URL}"> ${esc(name)}`;
     // Wowhead's widget renders the tooltip in whatever locale subdomain the
     // link points to -- matches the language switch the same way our own
     // hovercards already do
     const whHost = lang === 'es' ? 'es.wowhead.com' : 'www.wowhead.com';
-    const whId = lang === 'es' ? `es:spell=${spellId}` : `spell=${spellId}`;
-    parts.push(spellId
-      ? `<a class="enchgem-item" href="https://${whHost}/spell=${spellId}" data-wowhead="${whId}" target="_blank" rel="noopener">${inner}</a>`
+    const whEntity = itemId ? `item=${itemId}` : spellId ? `spell=${spellId}` : null;
+    const whId = lang === 'es' ? `es:${whEntity}` : whEntity;
+    parts.push(whEntity
+      ? `<a class="enchgem-item" href="https://${whHost}/${whEntity}" data-wowhead="${whId}" target="_blank" rel="noopener">${inner}</a>`
       : `<span class="enchgem-item" data-name="${esc(name)}" data-source="Enchant">${inner}</span>`);
   }
   for (const g of gemIds ?? []) {
@@ -3002,6 +3006,13 @@ const enchantNameCache = new Map();
 // the enchant's actual numeric effect, which this app has no correct local
 // formula for (see server/index.js's /api/enchant-names for why).
 const enchantSpellIdCache = new Map();
+// enchant id -> its scroll item's id (server-guessed via a verified fixed
+// offset, confirmed against our own item cache -- see
+// ENCHANT_TO_SCROLL_ITEM_OFFSET in server/index.js). The scroll item's own
+// Wowhead tooltip reliably has the full "Use: Permanently enchants... by
+// N%" text, unlike the enchant's underlying spell (often empty) -- preferred
+// over enchantSpellIdCache whenever both exist.
+const enchantItemIdCache = new Map();
 let enchantNameFetch = null;
 
 // Loads Wowhead's own public tooltip widget script once, the first time an
@@ -3047,6 +3058,7 @@ async function warmEnchantNames(equipped) {
     for (const id of ids) {
       enchantNameCache.set(id, j.names?.[id] ?? null);
       if (j.spellIds?.[id]) { enchantSpellIdCache.set(id, j.spellIds[id]); anySpellId = true; }
+      if (j.itemIds?.[id]) { enchantItemIdCache.set(id, j.itemIds[id]); anySpellId = true; }
     }
   } catch {
     for (const id of ids) enchantNameCache.set(id, null);
@@ -3067,7 +3079,9 @@ async function fetchEnchantName(id, onReady) {
       const r = await fetch(`/api/enchant-names?ids=${id}&patch=${encodeURIComponent(patch)}&lang=${encodeURIComponent(lang)}`);
       const j = await r.json();
       enchantNameCache.set(id, j.names?.[id] ?? null);
-      if (j.spellIds?.[id]) { enchantSpellIdCache.set(id, j.spellIds[id]); await loadWowheadWidget(); }
+      if (j.spellIds?.[id]) enchantSpellIdCache.set(id, j.spellIds[id]);
+      if (j.itemIds?.[id]) enchantItemIdCache.set(id, j.itemIds[id]);
+      if (j.spellIds?.[id] || j.itemIds?.[id]) await loadWowheadWidget();
     } catch { enchantNameCache.set(id, null); }
   })();
   await enchantNameFetch;

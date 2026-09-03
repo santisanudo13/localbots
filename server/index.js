@@ -814,12 +814,27 @@ app.get('/api/icons', (req, res) => {
 // currency-category name, not the enchant's own tooltip), which came out as
 // garbled, color-coded junk -- worse than the plain name. Rather than ship
 // that, this only ever returns the real, locale-correct NAME.
+// The current season's enchant scroll items were allocated a fixed 235990
+// higher than their own enchant id (verified against three known enchants:
+// 7967->243957 "Eyes of the Eagle", 7973->243963 "Akil'zon's Swiftness",
+// 8039->244029 "Acuity of the Ren'dorei" -- all three exist in our own
+// ItemSparse cache with the matching name). That scroll ITEM's own tooltip
+// has the enchant's real "Use: Permanently enchants... by N%" text (verified
+// live against wowhead.com), unlike the enchant's underlying spell, which
+// often has none. This is a guess, not derived data -- always confirmed
+// against our own local item cache below before ever being used, and never
+// assumed to hold for enchants outside the current season (older ones were
+// allocated in unrelated id batches).
+const ENCHANT_TO_SCROLL_ITEM_OFFSET = 235990;
+
 app.get('/api/enchant-names', (req, res) => {
   const p = getPatch(req);
   const map = p.enchantNames;
   p.enchantSpellIds ??= loadEnchantSpellIds(p.paths.cacheDir);
+  p.itemTables ??= loadItemTables(p.paths.cacheDir);
   const out = {};
   const spellIds = {};
+  const itemIds = {};
   for (const raw of String(req.query.ids ?? '').split(',')) {
     const id = Number(raw);
     if (!id) continue;
@@ -830,8 +845,19 @@ app.get('/api/enchant-names', (req, res) => {
     // effect actually grants (see the comment on loadEnchantSpellIds)
     const spellId = p.enchantSpellIds?.get(id);
     if (spellId) spellIds[id] = spellId;
+    // prefer the scroll ITEM's tooltip (see ENCHANT_TO_SCROLL_ITEM_OFFSET)
+    // when the guessed id checks out against our own item cache -- its
+    // "Use:" text is reliably complete, unlike the spell's
+    const guess = id + ENCHANT_TO_SCROLL_ITEM_OFFSET;
+    const guessedItem = p.itemTables?.items?.get(guess);
+    // both tables carry the same localized string for these, so an exact
+    // match (trim/case-insensitive for safety) confirms the guess without
+    // needing to know either language's exact phrasing pattern
+    if (guessedItem?.name && name && guessedItem.name.trim().toLowerCase() === name.trim().toLowerCase()) {
+      itemIds[id] = guess;
+    }
   }
-  res.json({ names: out, spellIds, ready: !!map?.size });
+  res.json({ names: out, spellIds, itemIds, ready: !!map?.size });
 });
 
 app.post('/api/armory', async (req, res) => {
