@@ -803,6 +803,17 @@ app.get('/api/icons', (req, res) => {
 // enchant_id -> its real name, for item hovercards. Falls back to nothing
 // (the caller shows the raw id) until this language's data has SpellItemEnchantment
 // cached -- same "Refresh data" flow as everything else wago-sourced.
+//
+// Tried and abandoned: resolving each enchant's numeric "Equip: +65 Critical
+// Strike"-style tooltip line the same way an item's on-equip effects are
+// (see itemEffects.js's renderSpell), keyed off SpellItemEnchantment's
+// Effect_N/EffectArg_N. The actual stat-granting effect is type 5 with an arg
+// that is not a spell id at all (an ITEM_MOD-like enum this codebase has no
+// verified mapping for), so renderSpell had nothing to resolve there; the
+// other slots sometimes reference a real but UNRELATED spell (an achievement/
+// currency-category name, not the enchant's own tooltip), which came out as
+// garbled, color-coded junk -- worse than the plain name. Rather than ship
+// that, this only ever returns the real, locale-correct NAME.
 app.get('/api/enchant-names', (req, res) => {
   const p = getPatch(req);
   const map = p.enchantNames;

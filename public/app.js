@@ -2891,10 +2891,12 @@ function enchGemSubline(enchantId, gemIds) {
     const name = gemOrEnchantLabel(enchantId, 'enchant');
     // enchants have no item id (they're a SpellItemEnchantment row, not an
     // item), so this hovercard is name-only -- no stats to fetch, unlike a
-    // real item or gem. The data attrs sit on the WRAPPING span, not just the
-    // icon -- otherwise hovering the name text (not the tiny icon itself)
-    // bubbles past it to the parent item row's own data-item and shows that
-    // item's hovercard instead of the enchant's.
+    // real item or gem (there's no reliable way to resolve an enchant's own
+    // numeric tooltip line from the data wago.tools ships; see the note on
+    // /api/enchant-names). The data attrs sit on the WRAPPING span, not just
+    // the icon -- otherwise hovering the name text (not the tiny icon
+    // itself) bubbles past it to the parent item row's own data-item and
+    // shows that item's hovercard instead of the enchant's.
     parts.push(`<span class="enchgem-item" data-name="${esc(name)}" data-source="Enchant"><img class="mini-icon" alt="" src="${ENCHANT_ICON_URL}"> ${esc(name)}</span>`);
   }
   for (const g of gemIds ?? []) {
