@@ -69,7 +69,14 @@ const TABLES = {
   // An enchant_id's real name ("Enchant Chest - Mark of the Worldsoul") --
   // simc's own tuning data has no such name, hence the raw id shown until
   // this table exists in the cache.
-  SpellItemEnchantment: ['ID', 'Name_lang'],
+  // Effect_0/EffectArg_0: the spell id the enchant's primary effect grants
+  // (when it works via an aura/proc spell rather than a flat stat baked into
+  // this row) -- used only to link to Wowhead's own tooltip widget for a
+  // real, verified numeric tooltip (see /api/enchant-names): this codebase
+  // has no correct local formula for the stat this often turns out to grant
+  // (confirmed against wowhead.com/spell=1236701: a % crit-damage modifier,
+  // not a flat rating -- not something ItemSparse-style budget math covers).
+  SpellItemEnchantment: ['ID', 'Name_lang', 'Effect_0', 'EffectArg_0'],
 };
 
 // Tables added after the first release: an older cache without them still
@@ -242,6 +249,24 @@ export function loadEnchantNames(cacheDir = CACHE_DIR) {
   if (!existsSync(path)) return new Map();
   const rows = parseCsv(readFileSync(path, 'utf8'), TABLES.SpellItemEnchantment);
   return new Map(rows.map((r) => [Number(r.ID), stripWowMarkup(r.Name_lang)]).filter(([, name]) => name));
+}
+
+// enchant_id -> the spell id its primary effect grants, when Effect_0 is a
+// real effect (i.e. non-zero) -- see the comment on TABLES.SpellItemEnchantment
+// for why this exists.
+export function loadEnchantSpellIds(cacheDir = CACHE_DIR) {
+  const path = join(cacheDir, 'SpellItemEnchantment.csv');
+  if (!existsSync(path)) return new Map();
+  const rows = parseCsv(readFileSync(path, 'utf8'), TABLES.SpellItemEnchantment);
+  const out = new Map();
+  for (const r of rows) {
+    const spellId = Number(r.EffectArg_0);
+    // Effect type 3 = "equip an aura/proc spell" -- EffectArg_0 really is a
+    // spell id there. Other effect types (5 = a direct stat, seen with args
+    // like 61 that are NOT spell ids) have no spell to link to.
+    if (Number(r.Effect_0) === 3 && spellId > 0) out.set(Number(r.ID), spellId);
+  }
+  return out;
 }
 
 // Build (and persist) the joined loot database from the cached CSVs.

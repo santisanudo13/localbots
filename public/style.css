@@ -1101,7 +1101,8 @@ span.char-item.missing,
 }
 /* enchant/gem subline under an item's name (mirrors the downloaded report) */
 .enchgem { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
-.enchgem-item { display: inline-flex; align-items: center; gap: 4px; }
+.enchgem-item { display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; }
+a.enchgem-item:hover { text-decoration: underline; }
 .mini-icon { width: 14px; height: 14px; border-radius: 3px; flex: none; vertical-align: -3px; border-width: 1px; }
 .mini-icon.blank, span.mini-icon { display: inline-block; background: var(--panel-2); }
 img.item-tile.mini-icon { width: 14px; height: 14px; border-radius: 3px; }

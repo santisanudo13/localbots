@@ -373,6 +373,12 @@
     <button id="shutdown-button" class="mini danger-outline" data-i18n="footer.shutdown">Shut down server</button>
   </footer>
 
+  <!-- Wowhead's own public tooltip widget: for an enchant's real numeric
+       tooltip, which this app has no correct local formula for (see
+       server/index.js's /api/enchant-names) -- loaded lazily by app.js only
+       once an enchant with a resolvable spell id is actually shown, so a
+       session that never hovers one never needs the network for this. -->
+  <script>window.whTooltips = { colorLinks: true, iconizeLinks: false, renameLinks: false };</script>
   <script src="app.js"></script>
 </body>
 </html>

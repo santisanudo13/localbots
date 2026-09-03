@@ -7,7 +7,7 @@ import { buildEnchantVariants, buildGemVariants, buildDiamondVariants, buildFoli
 import { resolveEquipped, clearResolveCache } from './equippedResolver.js';
 import { SimQueue, findSimc, simcVersion } from './simRunner.js';
 import { parseGear, GEAR_SLOTS } from './gearParser.js';
-import { loadLootDb, buildLootDb, downloadTables, cacheStatus, loadItemSetMap, loadBonusUpgradeMap, loadSocketBonusIds, loadEnchantNames, patchPaths } from './wagoData.js';
+import { loadLootDb, buildLootDb, downloadTables, cacheStatus, loadItemSetMap, loadBonusUpgradeMap, loadSocketBonusIds, loadEnchantNames, loadEnchantSpellIds, patchPaths } from './wagoData.js';
 import { buildSourceTree, buildDroptimizerInput, tierSetSummary, weaponSetup, seasonConfig as fullSeasonConfig } from './droptimizer.js';
 import { probeKnownItems, loadProbeCache } from './simcProbe.js';
 import { CLASS_IDS, INV_SLOTS, ARMOR_TYPE, WEAPONS } from './lootFilter.js';
@@ -817,14 +817,21 @@ app.get('/api/icons', (req, res) => {
 app.get('/api/enchant-names', (req, res) => {
   const p = getPatch(req);
   const map = p.enchantNames;
+  p.enchantSpellIds ??= loadEnchantSpellIds(p.paths.cacheDir);
   const out = {};
+  const spellIds = {};
   for (const raw of String(req.query.ids ?? '').split(',')) {
     const id = Number(raw);
     if (!id) continue;
     const name = map?.get(id);
     if (name) out[id] = name;
+    // for the caller to link a real Wowhead tooltip widget onto -- this
+    // codebase has no correct local formula for what an enchant's own
+    // effect actually grants (see the comment on loadEnchantSpellIds)
+    const spellId = p.enchantSpellIds?.get(id);
+    if (spellId) spellIds[id] = spellId;
   }
-  res.json({ names: out, ready: !!map?.size });
+  res.json({ names: out, spellIds, ready: !!map?.size });
 });
 
 app.post('/api/armory', async (req, res) => {

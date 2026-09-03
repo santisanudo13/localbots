@@ -2889,15 +2889,27 @@ function enchGemSubline(enchantId, gemIds) {
   const parts = [];
   if (enchantId) {
     const name = gemOrEnchantLabel(enchantId, 'enchant');
+    const spellId = enchantSpellIdCache.get(Number(enchantId));
     // enchants have no item id (they're a SpellItemEnchantment row, not an
-    // item), so this hovercard is name-only -- no stats to fetch, unlike a
-    // real item or gem (there's no reliable way to resolve an enchant's own
-    // numeric tooltip line from the data wago.tools ships; see the note on
-    // /api/enchant-names). The data attrs sit on the WRAPPING span, not just
-    // the icon -- otherwise hovering the name text (not the tiny icon
+    // item), so this app can't compute its own numeric stat line for one the
+    // way it does for a real item or gem -- there's no reliable local
+    // formula for what an enchant's own effect actually grants (see the
+    // note on /api/enchant-names). When the real spell behind it is known,
+    // link Wowhead's own tooltip widget instead, which has the real,
+    // verified numbers; otherwise fall back to our own name-only hovercard.
+    // Either way the data attrs/link sit on the WRAPPING span/anchor, not
+    // just the icon -- otherwise hovering the name text (not the tiny icon
     // itself) bubbles past it to the parent item row's own data-item and
     // shows that item's hovercard instead of the enchant's.
-    parts.push(`<span class="enchgem-item" data-name="${esc(name)}" data-source="Enchant"><img class="mini-icon" alt="" src="${ENCHANT_ICON_URL}"> ${esc(name)}</span>`);
+    const inner = `<img class="mini-icon" alt="" src="${ENCHANT_ICON_URL}"> ${esc(name)}`;
+    // Wowhead's widget renders the tooltip in whatever locale subdomain the
+    // link points to -- matches the language switch the same way our own
+    // hovercards already do
+    const whHost = lang === 'es' ? 'es.wowhead.com' : 'www.wowhead.com';
+    const whId = lang === 'es' ? `es:spell=${spellId}` : `spell=${spellId}`;
+    parts.push(spellId
+      ? `<a class="enchgem-item" href="https://${whHost}/spell=${spellId}" data-wowhead="${whId}" target="_blank" rel="noopener">${inner}</a>`
+      : `<span class="enchgem-item" data-name="${esc(name)}" data-source="Enchant">${inner}</span>`);
   }
   for (const g of gemIds ?? []) {
     const gInfo = { name: gemOrEnchantLabel(g, 'gem'), mini: true };
@@ -2985,7 +2997,34 @@ function statLines(s) {
 // fetched from the game client's own data (see /api/enchant-names) the first
 // time it's needed and cached from then on; null = looked up, found nothing.
 const enchantNameCache = new Map();
+// enchant id -> the spell id its primary effect grants, when there is one
+// (see /api/enchant-names) -- used to link a real Wowhead tooltip widget for
+// the enchant's actual numeric effect, which this app has no correct local
+// formula for (see server/index.js's /api/enchant-names for why).
+const enchantSpellIdCache = new Map();
 let enchantNameFetch = null;
+
+// Loads Wowhead's own public tooltip widget script once, the first time an
+// enchant with a resolvable spell id is actually shown -- a session that
+// never sees one never touches the network for this. $WowheadPower.refreshLinks()
+// (documented by Wowhead for exactly this case) re-scans the page for new
+// [data-wowhead] links after each redraw.
+let wowheadWidgetLoading = null;
+function loadWowheadWidget() {
+  if (window.$WowheadPower) return Promise.resolve();
+  if (wowheadWidgetLoading) return wowheadWidgetLoading;
+  wowheadWidgetLoading = new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://wow.zamimg.com/widgets/power.js';
+    s.onload = resolve;
+    s.onerror = resolve; // offline / blocked -- links just stay plain text
+    document.head.appendChild(s);
+  });
+  return wowheadWidgetLoading;
+}
+function refreshWowheadLinks() {
+  window.$WowheadPower?.refreshLinks?.();
+}
 
 // Prefetches every equipped slot's enchant name in one request, so "Your Top
 // Gear" and Details show the real name straight away instead of "enchant
@@ -3001,16 +3040,22 @@ async function warmEnchantNames(equipped) {
     .map((eq) => eq?.enchantId).filter(Boolean))]
     .filter((id) => !enchantNameCache.has(id));
   if (!ids.length) return;
+  let anySpellId = false;
   try {
     const r = await fetch(`/api/enchant-names?ids=${ids.join(',')}&patch=${encodeURIComponent(patch)}&lang=${encodeURIComponent(lang)}`);
     const j = await r.json();
-    for (const id of ids) enchantNameCache.set(id, j.names?.[id] ?? null);
+    for (const id of ids) {
+      enchantNameCache.set(id, j.names?.[id] ?? null);
+      if (j.spellIds?.[id]) { enchantSpellIdCache.set(id, j.spellIds[id]); anySpellId = true; }
+    }
   } catch {
     for (const id of ids) enchantNameCache.set(id, null);
   }
+  if (anySpellId) await loadWowheadWidget();
   // redraw whatever's currently showing the enchant sublines
   if (!$('tg-gear').classList.contains('hidden')) renderTopGearGrid();
   if (!$('topgear-table').classList.contains('hidden')) renderTopGearRows();
+  refreshWowheadLinks();
 }
 
 async function fetchEnchantName(id, onReady) {
@@ -3022,10 +3067,12 @@ async function fetchEnchantName(id, onReady) {
       const r = await fetch(`/api/enchant-names?ids=${id}&patch=${encodeURIComponent(patch)}&lang=${encodeURIComponent(lang)}`);
       const j = await r.json();
       enchantNameCache.set(id, j.names?.[id] ?? null);
+      if (j.spellIds?.[id]) { enchantSpellIdCache.set(id, j.spellIds[id]); await loadWowheadWidget(); }
     } catch { enchantNameCache.set(id, null); }
   })();
   await enchantNameFetch;
   onReady?.();
+  refreshWowheadLinks();
 }
 
 // id -> the season's display name for a gem or enchant, from the option
@@ -3149,10 +3196,15 @@ function positionTip(el) {
 function hideItemTip() { if (tipEl) tipEl.classList.add('hidden'); }
 
 document.addEventListener('mouseover', (e) => {
-  const el = e.target.closest?.('[data-item], [data-name]');
-  if (el) showItemTip(el);
+  // a [data-wowhead] link handles its own hover entirely (Wowhead's widget) --
+  // stop there rather than let closest() keep climbing to a data-item/
+  // data-name on some ancestor (the item whose slot the enchant is on) and
+  // popping OUR tooltip on top of theirs
+  const boundary = e.target.closest?.('[data-item], [data-name], [data-wowhead]');
+  if (boundary && !boundary.hasAttribute('data-wowhead')) showItemTip(boundary);
 });
 document.addEventListener('mouseout', (e) => {
-  if (e.target.closest?.('[data-item], [data-name]')) hideItemTip();
+  const boundary = e.target.closest?.('[data-item], [data-name], [data-wowhead]');
+  if (boundary && !boundary.hasAttribute('data-wowhead')) hideItemTip();
 });
 document.addEventListener('scroll', hideItemTip, true);
