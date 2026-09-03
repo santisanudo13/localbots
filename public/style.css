@@ -325,11 +325,19 @@ button.mini {
   border: 1px solid var(--border);
   white-space: nowrap;
 }
-/* Top Gear's "Items to compare", Raidbots-style: one block per slot, each a
-   3-column grid of clickable item cards (click toggles the hidden checkbox),
-   rather than a small scrolling checkbox list -- this is the biggest single
-   piece of the setup page now that it has the room for it. */
-.gear-slot-block { margin: 14px 0; }
+/* Top Gear's "Items to compare", Raidbots-style: one COLUMN per slot (Head |
+   Neck | Shoulders | ...), each a vertical stack of clickable item cards
+   (click toggles the hidden checkbox) underneath its heading, rather than a
+   small scrolling checkbox list -- #gear-list itself is the 3-4 column grid
+   that lays the slots out side by side; a slot's own item list is always a
+   single column, equipped item on top (see app.js). */
+#gear-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+.gear-slot-block { margin: 0; }
 .gear-slot-heading {
   font-size: 13px;
   text-transform: uppercase;
@@ -338,12 +346,9 @@ button.mini {
   margin: 0 0 6px;
 }
 .gear-slot-grid {
-  /* app.js pre-orders each slot's items into column-major order (equipped
-     first, top of column 1) and fixes the same column count used here, so a
-     plain row-major grid renders them reading top-to-bottom per column. */
-  display: grid;
-  grid-template-columns: repeat(var(--gear-cols, 4), 1fr);
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .gear-card {
   display: flex;

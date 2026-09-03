@@ -1304,28 +1304,17 @@ async function refreshGearList() {
   gearItems.forEach((item, i) => { (bySlot[item.slot] ??= []).push({ item, i }); });
   const slots = SLOT_ORDER.filter((s) => bySlot[s]);
   // equipped always leads its slot's list -- it's the fixed baseline, so it
-  // reads naturally as "here's what you have, here's what could replace it" --
-  // then reflow into column-major order (fill column 1 top-to-bottom, then
-  // column 2, ...) so the plain row-major CSS grid below reads that way too.
+  // reads naturally as "here's what you have, here's what could replace it"
   for (const slot of slots) {
     bySlot[slot].sort((a, b) => (b.item.section === 'Equipped') - (a.item.section === 'Equipped'));
-    const cols = Math.min(4, bySlot[slot].length) || 1;
-    const rows = Math.ceil(bySlot[slot].length / cols);
-    const flat = bySlot[slot];
-    const ordered = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const item = flat[c * rows + r];
-        if (item) ordered.push(item);
-      }
-    }
-    bySlot[slot] = ordered;
-    bySlot[slot]._cols = cols;
   }
+  // Raidbots-style: one COLUMN per slot (Head | Neck | Shoulders | ...),
+  // each slot's items stacked vertically underneath its heading -- #gear-list
+  // itself is the multi-column grid, not each slot's own item list.
   $('gear-list').innerHTML = slots.map((slot) => `
     <div class="gear-slot-block">
       <h3 class="gear-slot-heading">${esc(prettySlot(slot))} (${bySlot[slot].length})</h3>
-      <div class="gear-slot-grid" style="--gear-cols: ${bySlot[slot]._cols}">
+      <div class="gear-slot-grid">
         ${bySlot[slot].map(({ item, i }) => {
           const info = {
             name: item.name, ilvl: item.targetIlvl ?? item.ilvl, slot: prettySlot(item.slot),
