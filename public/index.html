@@ -10,10 +10,10 @@
 <body>
   <header>
     <h1>Localbots</h1>
-    <span class="tagline">your hardware, your sims</span>
+    <span class="tagline" data-i18n="tagline">your hardware, your sims</span>
     <nav class="page-nav">
-      <button class="page-btn active" data-page="sim">New sim</button>
-      <button class="page-btn" data-page="history">History</button>
+      <button class="page-btn active" data-page="sim" data-i18n="nav.newSim">New sim</button>
+      <button class="page-btn" data-page="history" data-i18n="nav.history">History</button>
     </nav>
     <nav class="patch-switch" id="patch-switch"></nav>
     <nav class="lang-switch" id="lang-switch"></nav>
@@ -24,43 +24,43 @@
   </header>
 
   <nav class="quick-nav" id="quick-nav">
-    <span class="quick-nav-label">Quick Nav:</span>
-    <a href="#sec-character" class="quick-nav-link">Character</a>
-    <a href="#sec-fight" class="quick-nav-link">Fight</a>
-    <a href="#sec-buffs" class="quick-nav-link">Buffs</a>
-    <a href="#sec-consumables" class="quick-nav-link">Consumables</a>
-    <a href="#sec-gear" class="quick-nav-link hidden" id="quick-nav-gear">Gear</a>
-    <a href="#sec-loot" class="quick-nav-link hidden" id="quick-nav-loot">Loot sources</a>
+    <span class="quick-nav-label" data-i18n="quicknav.label">Quick Nav:</span>
+    <a href="#sec-character" class="quick-nav-link" data-i18n="quicknav.character">Character</a>
+    <a href="#sec-fight" class="quick-nav-link" data-i18n="quicknav.fight">Fight</a>
+    <a href="#sec-buffs" class="quick-nav-link" data-i18n="quicknav.buffs">Buffs</a>
+    <a href="#sec-consumables" class="quick-nav-link" data-i18n="quicknav.consumables">Consumables</a>
+    <a href="#sec-gear" class="quick-nav-link hidden" id="quick-nav-gear" data-i18n="quicknav.gear">Gear</a>
+    <a href="#sec-loot" class="quick-nav-link hidden" id="quick-nav-loot" data-i18n="quicknav.loot">Loot sources</a>
   </nav>
 
   <main>
     <section class="panel input-panel">
       <div class="tab-bar">
-        <button class="tab active" data-mode="quick">Quick Sim</button>
-        <button class="tab" data-mode="topgear">Top Gear</button>
-        <button class="tab" data-mode="droptimizer">Droptimizer</button>
-        <button class="tab" data-mode="statweights">Stat Weights</button>
+        <button class="tab active" data-mode="quick" data-i18n="tab.quick">Quick Sim</button>
+        <button class="tab" data-mode="topgear" data-i18n="tab.topgear">Top Gear</button>
+        <button class="tab" data-mode="droptimizer" data-i18n="tab.droptimizer">Droptimizer</button>
+        <button class="tab" data-mode="statweights" data-i18n="tab.statweights">Stat Weights</button>
       </div>
 
-      <h2 id="sec-character">Character</h2>
+      <h2 id="sec-character" data-i18n="h2.character">Character</h2>
 
       <div class="src-switch" role="tablist" aria-label="Character source">
-        <button type="button" id="src-tab-addon" class="src-tab active" role="tab" aria-selected="true">SimC Addon</button>
-        <button type="button" id="src-tab-armory" class="src-tab" role="tab" aria-selected="false">Armory</button>
+        <button type="button" id="src-tab-addon" class="src-tab active" role="tab" aria-selected="true" data-i18n="src.addon">SimC Addon</button>
+        <button type="button" id="src-tab-armory" class="src-tab" role="tab" aria-selected="false" data-i18n="src.armory">Armory</button>
       </div>
 
       <div id="src-panel-addon">
-        <p class="hint">In game: type <code>/simc</code>, copy the text (Ctrl+C / Cmd+C), paste it below.</p>
+        <p class="hint" data-i18n="src.addonHint">In game: type <code>/simc</code>, copy the text (Ctrl+C / Cmd+C), paste it below.</p>
         <textarea id="profile" spellcheck="false"
-          placeholder="# Paste your /simc addon export here&#10;warrior=&quot;Yourname&quot;&#10;level=90&#10;spec=fury&#10;..."></textarea>
+          placeholder="# Paste your /simc addon export here&#10;warrior=&quot;Yourname&quot;&#10;level=90&#10;spec=fury&#10;..." data-i18n-placeholder="src.addonPlaceholder"></textarea>
       </div>
 
       <div id="src-panel-armory" class="hidden">
-        <p class="hint">Look the character up by name — no addon needed. Gear comes from the last
+        <p class="hint" data-i18n="src.armoryHint">Look the character up by name — no addon needed. Gear comes from the last
           public scan of the character, so anything swapped in the last few minutes may be missing;
           the addon export is always exact.</p>
         <div class="armory-form">
-          <label class="f-region">Region
+          <label class="f-region"><span data-i18n="src.region">Region</span>
             <select id="armory-region">
               <option value="eu">EU</option>
               <option value="us">US</option>
@@ -69,187 +69,196 @@
               <option value="cn">CN</option>
             </select>
           </label>
-          <label class="f-realm">Realm
+          <label class="f-realm"><span data-i18n="src.realm">Realm</span>
             <input type="text" id="armory-realm" placeholder="Kilrogg" autocomplete="off" spellcheck="false">
           </label>
-          <label class="f-name">Character
+          <label class="f-name"><span data-i18n="src.character">Character</span>
             <input type="text" id="armory-name" placeholder="Shanksgiving" autocomplete="off" spellcheck="false">
           </label>
-          <button type="button" id="armory-import" class="primary">Import</button>
+          <button type="button" id="armory-import" class="primary" data-i18n="src.import">Import</button>
         </div>
         <p class="hint" id="armory-status"></p>
       </div>
 
       <div id="char-card" class="char-card hidden"></div>
 
-      <h2 id="sec-fight">Fight</h2>
+      <h2 id="sec-fight" data-i18n="h2.fight">Fight</h2>
       <div class="options-grid">
-        <label>Fight style
+        <label><span data-i18n="fight.style">Fight style</span>
           <select id="fight-style">
-            <option value="Patchwerk">Patchwerk (single target, raid boss)</option>
-            <option value="DungeonSlice">DungeonSlice (M+ style packs)</option>
-            <option value="HecticAddCleave">HecticAddCleave (heavy add cleave)</option>
-            <option value="Dummy">Training dummy (stand still &amp; pump)</option>
+            <option value="Patchwerk" data-i18n="fight.style.patchwerk">Patchwerk (single target, raid boss)</option>
+            <option value="DungeonSlice" data-i18n="fight.style.dungeonslice">DungeonSlice (M+ style packs)</option>
+            <option value="HecticAddCleave" data-i18n="fight.style.hectic">HecticAddCleave (heavy add cleave)</option>
+            <option value="Dummy" data-i18n="fight.style.dummy">Training dummy (stand still &amp; pump)</option>
           </select>
         </label>
-        <label id="enemies-label">Enemies
+        <label id="enemies-label"><span data-i18n="fight.enemies">Enemies</span>
           <input type="number" id="num-enemies" min="1" max="10" value="1">
-          <span id="enemies-fixed" class="fixed-note hidden">set by the fight style</span>
+          <span id="enemies-fixed" class="fixed-note hidden" data-i18n="fight.enemiesFixed">set by the fight style</span>
         </label>
-        <label>Fight length (seconds)
+        <label><span data-i18n="fight.length">Fight length (seconds)</span>
           <input type="number" id="fight-length" min="30" max="1200" step="30" value="300">
         </label>
-        <label>Precision
+        <label><span data-i18n="fight.precision">Precision</span>
           <select id="precision">
-            <option value="0.5">Fast (target error 0.5%)</option>
-            <option value="0.2" selected>Normal (target error 0.2%)</option>
-            <option value="0.1">High (target error 0.1%)</option>
-            <option value="0.05">Extreme (target error 0.05%, Raidbots Smart Sim grade)</option>
-            <option value="iterations">Fixed iterations…</option>
+            <option value="0.5" data-i18n="fight.precision.fast">Fast (target error 0.5%)</option>
+            <option value="0.2" selected data-i18n="fight.precision.normal">Normal (target error 0.2%)</option>
+            <option value="0.1" data-i18n="fight.precision.high">High (target error 0.1%)</option>
+            <option value="0.05" data-i18n="fight.precision.extreme">Extreme (target error 0.05%, Raidbots Smart Sim grade)</option>
+            <option value="iterations" data-i18n="fight.precision.fixed">Fixed iterations…</option>
           </select>
         </label>
-        <label id="iterations-label" class="hidden">Iterations
+        <label id="iterations-label" class="hidden"><span data-i18n="fight.iterations">Iterations</span>
           <input type="number" id="iterations" min="100" max="100000" step="100" value="10000">
         </label>
       </div>
 
-      <h2 id="sec-buffs">Raid buffs</h2>
+      <h2 id="sec-buffs" data-i18n="h2.buffs">Raid buffs</h2>
       <div class="gear-toolbar">
-        <button class="mini" id="preset-all-on">Everything on</button>
-        <button class="mini" id="preset-all-off">Everything off</button>
+        <button class="mini" id="preset-all-on" data-i18n="buffs.allOn">Everything on</button>
+        <button class="mini" id="preset-all-off" data-i18n="buffs.allOff">Everything off</button>
       </div>
       <div class="checkbox-grid" id="buffs">
-        <label><input type="checkbox" data-buff="bloodlust" checked> Bloodlust / Heroism</label>
-        <label><input type="checkbox" data-buff="arcane_intellect" checked> Arcane Intellect</label>
-        <label><input type="checkbox" data-buff="battle_shout" checked> Battle Shout</label>
-        <label><input type="checkbox" data-buff="mark_of_the_wild" checked> Mark of the Wild</label>
-        <label><input type="checkbox" data-buff="power_word_fortitude" checked> PW: Fortitude</label>
-        <label><input type="checkbox" data-buff="mystic_touch" checked> Mystic Touch</label>
-        <label><input type="checkbox" data-buff="chaos_brand" checked> Chaos Brand</label>
-        <label><input type="checkbox" data-buff="skyfury" checked> Skyfury</label>
-        <label><input type="checkbox" data-buff="hunters_mark" checked> Hunter's Mark</label>
+        <label><input type="checkbox" data-buff="bloodlust" checked> <span data-i18n="buff.bloodlust">Bloodlust / Heroism</span></label>
+        <label><input type="checkbox" data-buff="arcane_intellect" checked> <span data-i18n="buff.arcaneIntellect">Arcane Intellect</span></label>
+        <label><input type="checkbox" data-buff="battle_shout" checked> <span data-i18n="buff.battleShout">Battle Shout</span></label>
+        <label><input type="checkbox" data-buff="mark_of_the_wild" checked> <span data-i18n="buff.markOfTheWild">Mark of the Wild</span></label>
+        <label><input type="checkbox" data-buff="power_word_fortitude" checked> <span data-i18n="buff.pwFortitude">PW: Fortitude</span></label>
+        <label><input type="checkbox" data-buff="mystic_touch" checked> <span data-i18n="buff.mysticTouch">Mystic Touch</span></label>
+        <label><input type="checkbox" data-buff="chaos_brand" checked> <span data-i18n="buff.chaosBrand">Chaos Brand</span></label>
+        <label><input type="checkbox" data-buff="skyfury" checked> <span data-i18n="buff.skyfury">Skyfury</span></label>
+        <label><input type="checkbox" data-buff="hunters_mark" checked> <span data-i18n="buff.huntersMark">Hunter's Mark</span></label>
       </div>
 
-      <h2 id="sec-consumables">Consumables</h2>
+      <h2 id="sec-consumables" data-i18n="h2.consumables">Consumables</h2>
       <div class="checkbox-grid" id="consumables">
-        <label><input type="checkbox" data-consumable="flask" checked> Flask</label>
-        <label><input type="checkbox" data-consumable="food" checked> Food</label>
-        <label><input type="checkbox" data-consumable="potion" checked> Potion</label>
-        <label><input type="checkbox" data-consumable="augmentation" checked> Augment rune</label>
-        <label><input type="checkbox" data-consumable="temporary_enchant" checked> Weapon oil</label>
+        <label><input type="checkbox" data-consumable="flask" checked> <span data-i18n="consumable.flask">Flask</span></label>
+        <label><input type="checkbox" data-consumable="food" checked> <span data-i18n="consumable.food">Food</span></label>
+        <label><input type="checkbox" data-consumable="potion" checked> <span data-i18n="consumable.potion">Potion</span></label>
+        <label><input type="checkbox" data-consumable="augmentation" checked> <span data-i18n="consumable.augmentation">Augment rune</span></label>
+        <label><input type="checkbox" data-consumable="temporary_enchant" checked> <span data-i18n="consumable.weaponOil">Weapon oil</span></label>
       </div>
 
       <div id="gear-section" class="hidden">
-        <h2 id="sec-gear">Filter Sim by Slot</h2>
-        <p class="hint">Click one or more slots to tick only their items below; click a highlighted
+        <h2 id="sec-gear" data-i18n="h2.filterSlot">Filter Sim by Slot</h2>
+        <p class="hint" data-i18n="gear.filterHint">Click one or more slots to tick only their items below; click a highlighted
           slot again to drop it, or clear them all to show every slot.</p>
         <div id="gear-slot-filter" class="chip-row"></div>
-        <h2>Item search</h2>
-        <p class="hint">Add any item by name at any item level — not limited to what's in your bags.</p>
+        <h2 data-i18n="h2.itemSearch">Item search</h2>
+        <p class="hint" data-i18n="gear.searchHint">Add any item by name at any item level — not limited to what's in your bags.</p>
         <div class="item-search-box">
-          <input type="search" id="item-search-input" placeholder="Search for an item…" autocomplete="off">
+          <input type="search" id="item-search-input" placeholder="Search for an item…" autocomplete="off" data-i18n-placeholder="gear.searchPlaceholder">
         </div>
         <div id="item-search-results" class="hidden"></div>
 
-        <h2>Items to compare</h2>
-        <p class="hint">Gear found in your bags (and vault choices) inside the export.
+        <h2 data-i18n="h2.itemsToCompare">Items to compare</h2>
+        <p class="hint" data-i18n="gear.itemsHint">Gear found in your bags (and vault choices) inside the export.
           Each ticked item is simmed in place of what you have equipped.</p>
         <div id="crest-summary" class="crest-summary hidden"></div>
         <div class="gear-toolbar">
-          <button class="mini" id="gear-all">All</button>
-          <button class="mini" id="gear-none">None</button>
-          <button class="mini" id="gear-max-upgrade"
+          <button class="mini" id="gear-all" data-i18n="gear.all">All</button>
+          <button class="mini" id="gear-none" data-i18n="gear.none">None</button>
+          <button class="mini" id="gear-max-upgrade" data-i18n="gear.maxUpgrade"
+            data-i18n-title="gear.maxUpgradeTitle"
             title="Sets each item's sim level to the highest step its own track's crests can afford (20 crests per step), read from upgrade_currencies= in your export">
             Highest affordable upgrade</button>
           <label class="hint-inline" id="gear-catalyst-label"
+            data-i18n-title="gear.catalystTitle"
             title="Adds a 'Catalyzed' section below with the real tier piece each looted (non-crafted) item in a tier slot becomes when run through the Catalyst — tick the ones you want compared, same as any other item">
-            <input type="checkbox" id="gear-catalyst-toggle"> Catalyze selected items</label>
+            <input type="checkbox" id="gear-catalyst-toggle"> <span data-i18n="gear.catalyst">Catalyze selected items</span></label>
           <span id="gear-count" class="hint"></span>
         </div>
         <div id="gear-list"></div>
 
         <div id="itemsets-section" class="hidden">
-          <h2>Item sets</h2>
-          <p class="hint">Minimum set bonus to keep — suggestions that would break it are hidden.</p>
+          <h2 data-i18n="h2.itemSets">Item sets</h2>
+          <p class="hint" data-i18n="gear.setsHint">Minimum set bonus to keep — suggestions that would break it are hidden.</p>
           <div id="itemsets-list"></div>
         </div>
 
         <div class="compare-group" id="track-upgrades-group">
-          <label class="cg-head"><input type="checkbox" id="track-upgrades-toggle"> Track upgrades (equipped gear)
-            <span class="hint-inline">what is each upgrade worth?</span></label>
+          <label class="cg-head"><input type="checkbox" id="track-upgrades-toggle"> <span data-i18n="gear.trackUpgrades">Track upgrades (equipped gear)</span>
+            <span class="hint-inline" data-i18n="gear.trackUpgradesSub">what is each upgrade worth?</span></label>
           <div class="cg-panel hidden" id="track-upgrades-panel">
             <div class="dropt-row">
-              <label>Upgrade to
+              <label><span data-i18n="gear.upgradeTo">Upgrade to</span>
                 <select id="tu-step">
-                  <option value="1">2/6 of its track</option>
-                  <option value="2">3/6 of its track</option>
-                  <option value="3">4/6 of its track</option>
-                  <option value="4">5/6 of its track</option>
-                  <option value="5" selected>6/6 — fully upgraded</option>
+                  <option value="1" data-i18n="track.step2">2/6 of its track</option>
+                  <option value="2" data-i18n="track.step3">3/6 of its track</option>
+                  <option value="3" data-i18n="track.step4">4/6 of its track</option>
+                  <option value="4" data-i18n="track.step5">5/6 of its track</option>
+                  <option value="5" selected data-i18n="track.step6">6/6 — fully upgraded</option>
                 </select>
               </label>
               <label id="tu-voidcore-label">
-                <input type="checkbox" id="tu-voidcore"> + Voidcores (weapons &amp; trinkets)
+                <input type="checkbox" id="tu-voidcore"> <span data-i18n="gear.voidcores">+ Voidcores (weapons &amp; trinkets)</span>
               </label>
             </div>
             <div class="gear-toolbar">
-              <button class="mini" id="tu-all">All</button>
-              <button class="mini" id="tu-none">None</button>
+              <button class="mini" id="tu-all" data-i18n="gear.all">All</button>
+              <button class="mini" id="tu-none" data-i18n="gear.none">None</button>
               <span class="hint" id="tu-status"></span>
             </div>
             <div class="cg-options" id="tu-list"></div>
-            <p class="hint">Each item sims alone (plus one "all together" row). Item levels come
+            <p class="hint" data-i18n="gear.trackUpgradesHint">Each item sims alone (plus one "all together" row). Item levels come
               from your export; the track is guessed from the level — untick anything that looks off.</p>
           </div>
         </div>
 
-        <h2>Also compare</h2>
+        <h2 data-i18n="h2.alsoCompare">Also compare</h2>
         <div id="compare-groups"></div>
       </div>
 
       <div id="dropt-section" class="hidden">
-        <h2 id="sec-loot">Loot sources</h2>
+        <h2 id="sec-loot" data-i18n="h2.lootSources">Loot sources</h2>
         <p id="dropt-status" class="hint"></p>
         <div class="gear-toolbar">
-          <button class="mini" id="dropt-all">Include everything</button>
-          <button class="mini" id="dropt-none">None</button>
-          <button class="mini" id="dropt-refresh" title="Re-download game data from wago.tools (updates with game patches)">Refresh data</button>
+          <button class="mini" id="dropt-all" data-i18n="dropt.includeAll">Include everything</button>
+          <button class="mini" id="dropt-none" data-i18n="gear.none">None</button>
+          <button class="mini" id="dropt-refresh" data-i18n="dropt.refresh"
+            data-i18n-title="dropt.refreshTitle"
+            title="Re-download game data from wago.tools (updates with game patches)">Refresh data</button>
         </div>
         <div class="dropt-row" id="dropt-upgrade-row">
-          <label title="Sim every item upgraded within its own track (e.g. a Mythic raid drop at Myth 4/6). World boss / outdoor items are unaffected.">
-            Upgrade items to
+          <label
+            data-i18n-title="dropt.upgradeItemsTitle"
+            title="Sim every item upgraded within its own track (e.g. a Mythic raid drop at Myth 4/6). World boss / outdoor items are unaffected.">
+            <span data-i18n="dropt.upgradeItems">Upgrade items to</span>
             <select id="dropt-upgrade">
-              <option value="0" selected>As dropped (no upgrades)</option>
-              <option value="1">2/6 of their track</option>
-              <option value="2">3/6 of their track</option>
-              <option value="3">4/6 of their track</option>
-              <option value="4">5/6 of their track</option>
-              <option value="5">6/6 — fully upgraded</option>
+              <option value="0" selected data-i18n="dropt.asDropped">As dropped (no upgrades)</option>
+              <option value="1" data-i18n="track.step2">2/6 of their track</option>
+              <option value="2" data-i18n="track.step3">3/6 of their track</option>
+              <option value="3" data-i18n="track.step4">4/6 of their track</option>
+              <option value="4" data-i18n="track.step5">5/6 of their track</option>
+              <option value="5" data-i18n="track.step6">6/6 — fully upgraded</option>
             </select>
           </label>
         </div>
         <div class="dropt-row">
           <label id="dropt-voidcore-label" class="disabled-label"
+            data-i18n-title="dropt.voidcoreTitle"
             title="Ascendant Voidcores: only fully upgraded (6/6) Hero and Myth track weapons and trinkets — Hero → 285, Myth → 298">
             <input type="checkbox" id="dropt-voidcore" disabled>
-            Apply Voidcores (whenever possible)
+            <span data-i18n="dropt.applyVoidcores">Apply Voidcores (whenever possible)</span>
           </label>
         </div>
         <div class="dropt-row dropt-stack hidden" id="dropt-tier-row">
-          <label title="An item put into a tier slot would break your set bonus and read as a big loss. With this on, those rows keep the bonus — the Catalyst turns a drop into your tier piece while keeping its own stats, sockets and effects — so the row shows the stat difference on its own.">
+          <label data-i18n-title="dropt.tierTitle"
+            title="An item put into a tier slot would break your set bonus and read as a big loss. With this on, those rows keep the bonus — the Catalyst turns a drop into your tier piece while keeping its own stats, sockets and effects — so the row shows the stat difference on its own.">
             <input type="checkbox" id="dropt-tier">
-            Keep my tier set bonus (as if catalysed)
+            <span data-i18n="dropt.keepTier">Keep my tier set bonus (as if catalysed)</span>
           </label>
           <span class="hint-inline sub-note" id="dropt-tier-note"></span>
         </div>
         <div class="dropt-row">
-          <label title="Also sim items whose primary stat isn't yours (e.g. Intellect pieces on an Agility spec) — armor type and weapon proficiency are still enforced">
+          <label data-i18n-title="dropt.offspecTitle"
+            title="Also sim items whose primary stat isn't yours (e.g. Intellect pieces on an Agility spec) — armor type and weapon proficiency are still enforced">
             <input type="checkbox" id="dropt-offspec">
-            Include off-spec items
+            <span data-i18n="dropt.offspec">Include off-spec items</span>
           </label>
         </div>
         <div id="dropt-sources"></div>
-        <p class="hint">Full scans sim hundreds of items — the Fast precision preset is
+        <p class="hint" data-i18n="dropt.scanHint">Full scans sim hundreds of items — the Fast precision preset is
           recommended; expect several minutes.</p>
       </div>
 
@@ -258,25 +267,25 @@
 
     <div class="sim-bar" id="sim-bar">
       <span class="sim-bar-status" id="sim-bar-status"></span>
-      <button id="sim-button" class="primary">Sim it</button>
-      <button id="cancel-button" class="danger hidden">Cancel</button>
+      <button id="sim-button" class="primary" data-i18n="sim.button">Sim it</button>
+      <button id="cancel-button" class="danger hidden" data-i18n="sim.cancel">Cancel</button>
     </div>
 
     <section class="panel history-panel hidden" id="history-panel">
-      <h2>Sim history</h2>
-      <p class="hint">Every finished sim is saved here automatically. Click one to view its
+      <h2 data-i18n="h2.simHistory">Sim history</h2>
+      <p class="hint" data-i18n="history.hint">Every finished sim is saved here automatically. Click one to view its
         results again on the right.</p>
       <div id="history-list"></div>
     </section>
 
     <section class="panel results-panel hidden" id="results-panel">
       <div class="results-topbar">
-        <button type="button" class="mini" id="back-to-setup">← Back to setup</button>
+        <button type="button" class="mini" id="back-to-setup" data-i18n="results.backToSetup">← Back to setup</button>
         <span id="results-char-card" class="results-char-card"></span>
       </div>
       <p id="history-banner" class="history-banner hidden"></p>
       <div id="progress-area" class="hidden">
-        <h2 id="progress-phase">Simulating…</h2>
+        <h2 id="progress-phase" data-i18n="progress.simulating">Simulating…</h2>
         <div class="progress-track"><div id="progress-bar"></div></div>
         <p id="progress-detail" class="hint"></p>
         <div id="queue-area" class="hidden">
@@ -289,24 +298,24 @@
         <div class="dps-hero">
           <div>
             <span id="tg-baseline">0</span>
-            <span class="dps-unit">baseline DPS (equipped gear)</span>
+            <span class="dps-unit" data-i18n="results.baselineDps">baseline DPS (equipped gear)</span>
           </div>
           <p id="tg-meta" class="hint"></p>
         </div>
         <div id="tg-filters" class="hidden">
-          <input type="search" id="tg-search" placeholder="Filter items…">
+          <input type="search" id="tg-search" placeholder="Filter items…" data-i18n-placeholder="results.filterItems">
           <div id="tg-chips"></div>
           <div id="tg-slot-chips"></div>
         </div>
         <div class="result-tabs">
-          <button class="result-tab active" data-restab="gear">Your Top Gear</button>
-          <button class="result-tab" data-restab="best">Best setup</button>
+          <button class="result-tab active" data-restab="gear" data-i18n="results.yourTopGear">Your Top Gear</button>
+          <button class="result-tab" data-restab="best" data-i18n="results.bestSetup">Best setup</button>
         </div>
         <div id="tg-gear" class="hidden"></div>
         <div id="best-setup" class="hidden"></div>
         <table id="topgear-table" class="hidden">
           <thead>
-            <tr><th>Item</th><th>Source</th><th class="num">DPS</th><th class="num">Change</th><th class="share-col">vs equipped</th><th class="row-menu-col"></th></tr>
+            <tr><th data-i18n="th.item">Item</th><th data-i18n="th.source">Source</th><th class="num" data-i18n="th.dps">DPS</th><th class="num" data-i18n="th.change">Change</th><th class="share-col" data-i18n="th.vsEquipped">vs equipped</th><th class="row-menu-col"></th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -322,45 +331,46 @@
         </div>
 
         <div id="statweights-block" class="hidden">
-          <h2>Stat weights</h2>
+          <h2 data-i18n="h2.statWeights">Stat weights</h2>
           <table id="statweights-table">
             <thead>
-              <tr><th>Stat</th><th class="num">DPS per point</th><th class="share-col">Relative to top stat</th></tr>
+              <tr><th data-i18n="th.stat">Stat</th><th class="num" data-i18n="th.dpsPerPoint">DPS per point</th><th class="share-col" data-i18n="th.relativeToTop">Relative to top stat</th></tr>
             </thead>
             <tbody></tbody>
           </table>
         </div>
 
-        <h2>Damage breakdown</h2>
+        <h2 data-i18n="h2.damageBreakdown">Damage breakdown</h2>
         <table id="abilities-table">
           <thead>
-            <tr><th>Ability</th><th class="num">DPS</th><th class="num">Casts</th><th class="share-col">Share</th></tr>
+            <tr><th data-i18n="th.ability">Ability</th><th class="num" data-i18n="th.dps">DPS</th><th class="num" data-i18n="th.casts">Casts</th><th class="share-col" data-i18n="th.share">Share</th></tr>
           </thead>
           <tbody></tbody>
         </table>
 
-        <h2>Buff uptimes</h2>
+        <h2 data-i18n="h2.buffUptimes">Buff uptimes</h2>
         <table id="buffs-table">
           <thead>
-            <tr><th>Buff</th><th class="share-col">Uptime</th></tr>
+            <tr><th data-i18n="th.buff">Buff</th><th class="share-col" data-i18n="th.uptime">Uptime</th></tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
 
       <div id="empty-state">
-        <p>Paste your character, pick a fight, hit <strong>Sim it</strong>.</p>
-        <p class="hint">Results appear here with DPS, damage breakdown, and buff uptimes.</p>
+        <p data-i18n="empty.hit">Paste your character, pick a fight, hit <strong data-i18n="sim.button">Sim it</strong>.</p>
+        <p class="hint" data-i18n="empty.resultsHint">Results appear here with DPS, damage breakdown, and buff uptimes.</p>
       </div>
     </section>
   </main>
 
   <footer>
-    <span class="hint">Localbots runs entirely on this machine ·
-      <a class="footer-link" href="https://github.com/santisanudo13/localbots" target="_blank" rel="noopener">Localbots on GitHub</a></span>
-    <button id="report-button" class="mini" disabled
+    <span class="hint"><span data-i18n="footer.runsLocally">Localbots runs entirely on this machine</span> ·
+      <a class="footer-link" href="https://github.com/santisanudo13/localbots" target="_blank" rel="noopener" data-i18n="footer.github">Localbots on GitHub</a></span>
+    <button id="report-button" class="mini" disabled data-i18n="footer.saveReport"
+      data-i18n-title="footer.saveReportTitle"
       title="Save this result as one HTML file you can send to someone — it opens in any browser">Save report</button>
-    <button id="shutdown-button" class="mini danger-outline">Shut down server</button>
+    <button id="shutdown-button" class="mini danger-outline" data-i18n="footer.shutdown">Shut down server</button>
   </footer>
 
   <script src="app.js"></script>

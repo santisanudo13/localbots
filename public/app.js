@@ -23,19 +23,258 @@ let patchDefs = [];
 const LANGS = [{ id: 'en', label: 'EN' }, { id: 'es', label: 'ES' }];
 let lang = localStorage.getItem('localbots-lang') ?? 'en';
 
+// ---------- UI text translation (separate from the item/set/loot game-data
+// text above, which comes from wago.tools per patch) ----------
+// Every static label/hint/button/header in the app, keyed by a stable id.
+// `tr(key)` looks it up for the current language; `applyI18n()` walks the DOM
+// once (and again on every language switch) filling in textContent for
+// [data-i18n], the `title` attribute for [data-i18n-title], and `placeholder`
+// for [data-i18n-placeholder].
+const I18N = {
+  en: {
+    tagline: 'your hardware, your sims',
+    'nav.newSim': 'New sim', 'nav.history': 'History',
+    'quicknav.label': 'Quick Nav:', 'quicknav.character': 'Character', 'quicknav.fight': 'Fight',
+    'quicknav.buffs': 'Buffs', 'quicknav.consumables': 'Consumables', 'quicknav.gear': 'Gear',
+    'quicknav.loot': 'Loot sources',
+    'tab.quick': 'Quick Sim', 'tab.topgear': 'Top Gear', 'tab.droptimizer': 'Droptimizer', 'tab.statweights': 'Stat Weights',
+    'h2.character': 'Character',
+    'src.addon': 'SimC Addon', 'src.armory': 'Armory',
+    'src.addonHint': 'In game: type <code>/simc</code>, copy the text (Ctrl+C / Cmd+C), paste it below.',
+    'src.addonPlaceholder': "# Paste your /simc addon export here\nwarrior=\"Yourname\"\nlevel=90\nspec=fury\n...",
+    'src.armoryHint': 'Look the character up by name — no addon needed. Gear comes from the last public scan of the character, so anything swapped in the last few minutes may be missing; the addon export is always exact.',
+    'src.region': 'Region', 'src.realm': 'Realm', 'src.character': 'Character', 'src.import': 'Import',
+    'h2.fight': 'Fight',
+    'fight.style': 'Fight style',
+    'fight.style.patchwerk': 'Patchwerk (single target, raid boss)',
+    'fight.style.dungeonslice': 'DungeonSlice (M+ style packs)',
+    'fight.style.hectic': 'HecticAddCleave (heavy add cleave)',
+    'fight.style.dummy': 'Training dummy (stand still & pump)',
+    'fight.enemies': 'Enemies', 'fight.enemiesFixed': 'set by the fight style',
+    'fight.length': 'Fight length (seconds)',
+    'fight.precision': 'Precision',
+    'fight.precision.fast': 'Fast (target error 0.5%)',
+    'fight.precision.normal': 'Normal (target error 0.2%)',
+    'fight.precision.high': 'High (target error 0.1%)',
+    'fight.precision.extreme': 'Extreme (target error 0.05%, Raidbots Smart Sim grade)',
+    'fight.precision.fixed': 'Fixed iterations…',
+    'fight.iterations': 'Iterations',
+    'h2.buffs': 'Raid buffs', 'buffs.allOn': 'Everything on', 'buffs.allOff': 'Everything off',
+    'buff.bloodlust': 'Bloodlust / Heroism', 'buff.arcaneIntellect': 'Arcane Intellect',
+    'buff.battleShout': 'Battle Shout', 'buff.markOfTheWild': 'Mark of the Wild',
+    'buff.pwFortitude': 'PW: Fortitude', 'buff.mysticTouch': 'Mystic Touch',
+    'buff.chaosBrand': 'Chaos Brand', 'buff.skyfury': 'Skyfury', 'buff.huntersMark': "Hunter's Mark",
+    'h2.consumables': 'Consumables', 'consumable.flask': 'Flask', 'consumable.food': 'Food',
+    'consumable.potion': 'Potion', 'consumable.augmentation': 'Augment rune', 'consumable.weaponOil': 'Weapon oil',
+    'h2.filterSlot': 'Filter Sim by Slot',
+    'gear.filterHint': 'Click one or more slots to tick only their items below; click a highlighted slot again to drop it, or clear them all to show every slot.',
+    'h2.itemSearch': 'Item search',
+    'gear.searchHint': "Add any item by name at any item level — not limited to what's in your bags.",
+    'gear.searchPlaceholder': 'Search for an item…',
+    'h2.itemsToCompare': 'Items to compare',
+    'gear.itemsHint': 'Gear found in your bags (and vault choices) inside the export. Each ticked item is simmed in place of what you have equipped.',
+    'gear.all': 'All', 'gear.none': 'None',
+    'gear.maxUpgrade': 'Highest affordable upgrade',
+    'gear.maxUpgradeTitle': "Sets each item's sim level to the highest step its own track's crests can afford (20 crests per step), read from upgrade_currencies= in your export",
+    'gear.catalyst': 'Catalyze selected items',
+    'gear.catalystTitle': "Adds a 'Catalyzed' section below with the real tier piece each looted (non-crafted) item in a tier slot becomes when run through the Catalyst — tick the ones you want compared, same as any other item",
+    'h2.itemSets': 'Item sets',
+    'gear.setsHint': 'Minimum set bonus to keep — suggestions that would break it are hidden.',
+    'gear.trackUpgrades': 'Track upgrades (equipped gear)', 'gear.trackUpgradesSub': 'what is each upgrade worth?',
+    'gear.upgradeTo': 'Upgrade to',
+    'track.step2': '2/6 of its track', 'track.step3': '3/6 of its track', 'track.step4': '4/6 of its track',
+    'track.step5': '5/6 of its track', 'track.step6': '6/6 — fully upgraded',
+    'gear.voidcores': '+ Voidcores (weapons & trinkets)',
+    'gear.trackUpgradesHint': 'Each item sims alone (plus one "all together" row). Item levels come from your export; the track is guessed from the level — untick anything that looks off.',
+    'h2.alsoCompare': 'Also compare',
+    'h2.lootSources': 'Loot sources', 'dropt.includeAll': 'Include everything',
+    'dropt.refresh': 'Refresh data', 'dropt.refreshTitle': 'Re-download game data from wago.tools (updates with game patches)',
+    'dropt.upgradeItems': 'Upgrade items to',
+    'dropt.upgradeItemsTitle': 'Sim every item upgraded within its own track (e.g. a Mythic raid drop at Myth 4/6). World boss / outdoor items are unaffected.',
+    'dropt.asDropped': 'As dropped (no upgrades)',
+    'dropt.voidcoreTitle': 'Ascendant Voidcores: only fully upgraded (6/6) Hero and Myth track weapons and trinkets — Hero → 285, Myth → 298',
+    'dropt.applyVoidcores': 'Apply Voidcores (whenever possible)',
+    'dropt.tierTitle': "An item put into a tier slot would break your set bonus and read as a big loss. With this on, those rows keep the bonus — the Catalyst turns a drop into your tier piece while keeping its own stats, sockets and effects — so the row shows the stat difference on its own.",
+    'dropt.keepTier': 'Keep my tier set bonus (as if catalysed)',
+    'dropt.offspecTitle': "Also sim items whose primary stat isn't yours (e.g. Intellect pieces on an Agility spec) — armor type and weapon proficiency are still enforced",
+    'dropt.offspec': 'Include off-spec items',
+    'dropt.scanHint': 'Full scans sim hundreds of items — the Fast precision preset is recommended; expect several minutes.',
+    'sim.button': 'Sim it', 'sim.cancel': 'Cancel',
+    'sim.compareGear': 'Compare gear', 'sim.runDroptimizer': 'Run droptimizer', 'sim.calcStatWeights': 'Calc stat weights',
+    'lang.enTitle': 'Item, set and loot names in English (always available)',
+    'lang.esTitle': 'Item, set and loot names in Spanish -- the first time you pick this, hit “Refresh data” to download it',
+    'slot.head': 'head', 'slot.neck': 'neck', 'slot.shoulder': 'shoulder', 'slot.back': 'back', 'slot.chest': 'chest',
+    'slot.wrist': 'wrist', 'slot.hands': 'hands', 'slot.waist': 'waist', 'slot.legs': 'legs', 'slot.feet': 'feet',
+    'slot.finger1': 'finger 1', 'slot.finger2': 'finger 2', 'slot.trinket1': 'trinket 1', 'slot.trinket2': 'trinket 2',
+    'slot.mainHand': 'main hand', 'slot.offHand': 'off hand', 'slot.weapons': 'weapons',
+    'filter.all': 'All', 'filter.allSlots': 'All slots', 'filter.consumables': 'Consumables', 'filter.enchants': 'Enchants',
+    'filter.gems': 'Gems', 'filter.omniumFolio': 'Omnium Folio', 'filter.talentLoadouts': 'Talent loadouts',
+    'filter.loadout': 'Loadout', 'filter.rings': 'Rings', 'filter.trinkets': 'Trinkets', 'filter.weapon': 'Weapon',
+    'filter.upgrades': 'Upgrades', 'filter.equipped': 'Equipped', 'filter.bags': 'Bags', 'filter.catalyzed': 'Catalyzed',
+    'filter.search': 'Search', 'filter.row': 'Row', 'bucket.talentBuild': 'Talent build', 'bucket.enchant': 'Enchant',
+    'h2.simHistory': 'Sim history',
+    'history.hint': 'Every finished sim is saved here automatically. Click one to view its results again on the right.',
+    'results.backToSetup': '← Back to setup',
+    'progress.simulating': 'Simulating…',
+    'results.baselineDps': 'baseline DPS (equipped gear)', 'results.filterItems': 'Filter items…',
+    'results.yourTopGear': 'Your Top Gear', 'results.bestSetup': 'Best setup',
+    'results.highlightedHint': 'Highlighted slots beat what you have equipped — enchant & gems shown for the rest carry over to every candidate in that slot in Details.',
+    'th.item': 'Item', 'th.source': 'Source', 'th.dps': 'DPS', 'th.change': 'Change', 'th.vsEquipped': 'vs equipped',
+    'h2.statWeights': 'Stat weights', 'th.stat': 'Stat', 'th.dpsPerPoint': 'DPS per point', 'th.relativeToTop': 'Relative to top stat',
+    'h2.damageBreakdown': 'Damage breakdown', 'th.ability': 'Ability', 'th.casts': 'Casts', 'th.share': 'Share',
+    'h2.buffUptimes': 'Buff uptimes', 'th.buff': 'Buff', 'th.uptime': 'Uptime',
+    'empty.hit': 'Paste your character, pick a fight, hit <strong data-i18n="sim.button">Sim it</strong>.',
+    'empty.resultsHint': 'Results appear here with DPS, damage breakdown, and buff uptimes.',
+    'footer.runsLocally': 'Localbots runs entirely on this machine', 'footer.github': 'Localbots on GitHub',
+    'footer.saveReport': 'Save report',
+    'footer.saveReportTitle': 'Save this result as one HTML file you can send to someone — it opens in any browser',
+    'footer.shutdown': 'Shut down server',
+    'status.appOk': 'Localbots up to date', 'status.appOutdated': 'Localbots update available',
+    'status.appUnknown': 'Localbots — can’t check',
+    'status.simcOk': 'Simc up to date', 'status.simcOutdatedClick': 'Simc outdated — click to update',
+    'status.simcOutdated': 'Simc outdated', 'status.simcUnknown': 'Simc — can’t check',
+    'status.simcUpdateFailed': 'Simc update failed', 'status.simcUpdating': 'Simc updating…',
+    'status.simcStillOutdated': 'Simc still outdated',
+  },
+  es: {
+    tagline: 'tu hardware, tus simulaciones',
+    'nav.newSim': 'Nueva sim', 'nav.history': 'Historial',
+    'quicknav.label': 'Navegación rápida:', 'quicknav.character': 'Personaje', 'quicknav.fight': 'Combate',
+    'quicknav.buffs': 'Mejoras', 'quicknav.consumables': 'Consumibles', 'quicknav.gear': 'Equipo',
+    'quicknav.loot': 'Fuentes de botín',
+    'tab.quick': 'Sim rápida', 'tab.topgear': 'Mejor equipo', 'tab.droptimizer': 'Droptimizer', 'tab.statweights': 'Peso de stats',
+    'h2.character': 'Personaje',
+    'src.addon': 'Addon SimC', 'src.armory': 'Armería',
+    'src.addonHint': 'En el juego: escribe <code>/simc</code>, copia el texto (Ctrl+C / Cmd+C) y pégalo abajo.',
+    'src.addonPlaceholder': "# Pega aquí tu export del addon /simc\nwarrior=\"Tunombre\"\nlevel=90\nspec=fury\n...",
+    'src.armoryHint': 'Busca el personaje por nombre — no hace falta el addon. El equipo viene del último escaneo público del personaje, así que algo cambiado en los últimos minutos puede faltar; el export del addon siempre es exacto.',
+    'src.region': 'Región', 'src.realm': 'Reino', 'src.character': 'Personaje', 'src.import': 'Importar',
+    'h2.fight': 'Combate',
+    'fight.style': 'Estilo de combate',
+    'fight.style.patchwerk': 'Patchwerk (un objetivo, jefe de banda)',
+    'fight.style.dungeonslice': 'DungeonSlice (estilo M+ con grupos)',
+    'fight.style.hectic': 'HecticAddCleave (oleadas intensas de secuaces)',
+    'fight.style.dummy': 'Muñeco de entrenamiento (quieto y a pegar)',
+    'fight.enemies': 'Enemigos', 'fight.enemiesFixed': 'fijado por el estilo de combate',
+    'fight.length': 'Duración del combate (segundos)',
+    'fight.precision': 'Precisión',
+    'fight.precision.fast': 'Rápida (error objetivo 0.5%)',
+    'fight.precision.normal': 'Normal (error objetivo 0.2%)',
+    'fight.precision.high': 'Alta (error objetivo 0.1%)',
+    'fight.precision.extreme': 'Extrema (error objetivo 0.05%, nivel Smart Sim de Raidbots)',
+    'fight.precision.fixed': 'Iteraciones fijas…',
+    'fight.iterations': 'Iteraciones',
+    'h2.buffs': 'Mejoras de banda', 'buffs.allOn': 'Todo activado', 'buffs.allOff': 'Todo desactivado',
+    'buff.bloodlust': 'Ansia de sangre / Heroísmo', 'buff.arcaneIntellect': 'Intelecto arcano',
+    'buff.battleShout': 'Grito de guerra', 'buff.markOfTheWild': 'Marca de la salvaje',
+    'buff.pwFortitude': 'PS: Fortaleza', 'buff.mysticTouch': 'Toque místico',
+    'buff.chaosBrand': 'Marca del caos', 'buff.skyfury': 'Furia celeste', 'buff.huntersMark': 'Marca de caza',
+    'h2.consumables': 'Consumibles', 'consumable.flask': 'Frasco', 'consumable.food': 'Comida',
+    'consumable.potion': 'Poción', 'consumable.augmentation': 'Runa de aumento', 'consumable.weaponOil': 'Aceite de arma',
+    'h2.filterSlot': 'Filtrar sim por ranura',
+    'gear.filterHint': 'Haz clic en una o varias ranuras para marcar solo sus objetos abajo; haz clic de nuevo en una ranura resaltada para quitarla, o límpialas todas para mostrar todas las ranuras.',
+    'h2.itemSearch': 'Buscar objeto',
+    'gear.searchHint': 'Añade cualquier objeto por nombre a cualquier nivel de objeto — no limitado a lo que llevas en las bolsas.',
+    'gear.searchPlaceholder': 'Buscar un objeto…',
+    'h2.itemsToCompare': 'Objetos a comparar',
+    'gear.itemsHint': 'Equipo encontrado en tus bolsas (y elecciones de la bóveda) dentro del export. Cada objeto marcado se simula en lugar de lo que llevas equipado.',
+    'gear.all': 'Todos', 'gear.none': 'Ninguno',
+    'gear.maxUpgrade': 'Mayor mejora asequible',
+    'gear.maxUpgradeTitle': 'Fija el nivel de sim de cada objeto al mayor paso que sus cristas puedan pagar (20 cristas por paso), leído de upgrade_currencies= en tu export',
+    'gear.catalyst': 'Catalizar objetos seleccionados',
+    'gear.catalystTitle': "Añade una sección 'Catalizado' abajo con la pieza real de conjunto en la que se convierte cada objeto looteado (no crafteado) de una ranura de conjunto al pasar por el Catalizador — marca los que quieras comparar, igual que cualquier otro objeto",
+    'h2.itemSets': 'Conjuntos de objetos',
+    'gear.setsHint': 'Bonificación mínima de conjunto a mantener — las sugerencias que la romperían se ocultan.',
+    'gear.trackUpgrades': 'Mejoras de camino (equipo actual)', 'gear.trackUpgradesSub': '¿cuánto vale cada mejora?',
+    'gear.upgradeTo': 'Mejorar a',
+    'track.step2': '2/6 de su camino', 'track.step3': '3/6 de su camino', 'track.step4': '4/6 de su camino',
+    'track.step5': '5/6 de su camino', 'track.step6': '6/6 — totalmente mejorado',
+    'gear.voidcores': '+ Núcleos del Vacío (armas y abalorios)',
+    'gear.trackUpgradesHint': 'Cada objeto se simula solo (más una fila "todos juntos"). Los niveles de objeto vienen de tu export; el camino se adivina por el nivel — desmarca lo que parezca incorrecto.',
+    'h2.alsoCompare': 'También comparar',
+    'h2.lootSources': 'Fuentes de botín', 'dropt.includeAll': 'Incluir todo',
+    'dropt.refresh': 'Actualizar datos', 'dropt.refreshTitle': 'Vuelve a descargar los datos del juego desde wago.tools (se actualiza con los parches)',
+    'dropt.upgradeItems': 'Mejorar objetos a',
+    'dropt.upgradeItemsTitle': 'Simula cada objeto mejorado dentro de su propio camino (p. ej. un drop de banda Mítica a Mítico 4/6). Los objetos de jefe mundial / exteriores no se ven afectados.',
+    'dropt.asDropped': 'Tal como cae (sin mejoras)',
+    'dropt.voidcoreTitle': 'Núcleos del Vacío Ascendentes: solo armas y abalorios de camino Héroe y Mítico totalmente mejorados (6/6) — Héroe → 285, Mítico → 298',
+    'dropt.applyVoidcores': 'Aplicar Núcleos del Vacío (cuando sea posible)',
+    'dropt.tierTitle': 'Un objeto puesto en una ranura de conjunto rompería tu bonificación de conjunto y se leería como una gran pérdida. Con esto activado, esas filas mantienen la bonificación — el Catalizador convierte un drop en tu pieza de conjunto manteniendo sus propias estadísticas, engarces y efectos — así que la fila muestra la diferencia de estadísticas por sí sola.',
+    'dropt.keepTier': 'Mantener mi bonificación de conjunto (como si catalizado)',
+    'dropt.offspecTitle': 'Simula también objetos cuya estadística principal no es la tuya (p. ej. piezas de Intelecto en una especialización de Agilidad) — el tipo de armadura y la competencia con el arma se siguen respetando',
+    'dropt.offspec': 'Incluir objetos fuera de especialización',
+    'dropt.scanHint': 'Los escaneos completos simulan cientos de objetos — se recomienda la precisión Rápida; espera varios minutos.',
+    'sim.button': 'Simular', 'sim.cancel': 'Cancelar',
+    'sim.compareGear': 'Comparar equipo', 'sim.runDroptimizer': 'Ejecutar droptimizer', 'sim.calcStatWeights': 'Calcular pesos',
+    'lang.enTitle': 'Nombres de objetos, conjuntos y botín en inglés (siempre disponible)',
+    'lang.esTitle': 'Nombres de objetos, conjuntos y botín en español -- la primera vez que elijas esto, pulsa "Actualizar datos" para descargarlo',
+    'slot.head': 'cabeza', 'slot.neck': 'cuello', 'slot.shoulder': 'hombros', 'slot.back': 'espalda', 'slot.chest': 'pecho',
+    'slot.wrist': 'muñeca', 'slot.hands': 'manos', 'slot.waist': 'cintura', 'slot.legs': 'piernas', 'slot.feet': 'pies',
+    'slot.finger1': 'anillo 1', 'slot.finger2': 'anillo 2', 'slot.trinket1': 'abalorio 1', 'slot.trinket2': 'abalorio 2',
+    'slot.mainHand': 'mano principal', 'slot.offHand': 'mano secundaria', 'slot.weapons': 'armas',
+    'filter.all': 'Todos', 'filter.allSlots': 'Todas las ranuras', 'filter.consumables': 'Consumibles', 'filter.enchants': 'Encantamientos',
+    'filter.gems': 'Gemas', 'filter.omniumFolio': 'Folio Omnium', 'filter.talentLoadouts': 'Configuraciones de talentos',
+    'filter.loadout': 'Configuración', 'filter.rings': 'Anillos', 'filter.trinkets': 'Abalorios', 'filter.weapon': 'Arma',
+    'filter.upgrades': 'Mejoras', 'filter.equipped': 'Equipado', 'filter.bags': 'Bolsas', 'filter.catalyzed': 'Catalizado',
+    'filter.search': 'Búsqueda', 'filter.row': 'Fila', 'bucket.talentBuild': 'Configuración de talentos', 'bucket.enchant': 'Encantamiento',
+    'h2.simHistory': 'Historial de sims',
+    'history.hint': 'Cada sim terminada se guarda aquí automáticamente. Haz clic en una para ver sus resultados de nuevo a la derecha.',
+    'results.backToSetup': '← Volver a la configuración',
+    'progress.simulating': 'Simulando…',
+    'results.baselineDps': 'DPS base (equipo equipado)', 'results.filterItems': 'Filtrar objetos…',
+    'results.yourTopGear': 'Tu mejor equipo', 'results.bestSetup': 'Mejor combinación',
+    'results.highlightedHint': 'Las ranuras resaltadas superan lo que llevas equipado — el encantamiento y las gemas mostrados para el resto se aplican a todos los candidatos de esa ranura en Detalles.',
+    'th.item': 'Objeto', 'th.source': 'Origen', 'th.dps': 'DPS', 'th.change': 'Cambio', 'th.vsEquipped': 'vs equipado',
+    'h2.statWeights': 'Peso de estadísticas', 'th.stat': 'Estadística', 'th.dpsPerPoint': 'DPS por punto', 'th.relativeToTop': 'Relativo a la mejor',
+    'h2.damageBreakdown': 'Desglose de daño', 'th.ability': 'Habilidad', 'th.casts': 'Usos', 'th.share': 'Porcentaje',
+    'h2.buffUptimes': 'Tiempo activo de mejoras', 'th.buff': 'Mejora', 'th.uptime': 'Tiempo activo',
+    'empty.hit': 'Pega tu personaje, elige un combate, pulsa <strong data-i18n="sim.button">Simular</strong>.',
+    'empty.resultsHint': 'Los resultados aparecerán aquí con DPS, desglose de daño y tiempo activo de mejoras.',
+    'footer.runsLocally': 'Localbots corre enteramente en esta máquina', 'footer.github': 'Localbots en GitHub',
+    'footer.saveReport': 'Guardar informe',
+    'footer.saveReportTitle': 'Guarda este resultado como un archivo HTML que puedes enviar a alguien — se abre en cualquier navegador',
+    'footer.shutdown': 'Apagar servidor',
+    'status.appOk': 'Localbots actualizado', 'status.appOutdated': 'Actualización de Localbots disponible',
+    'status.appUnknown': 'Localbots — no se puede comprobar',
+    'status.simcOk': 'Simc actualizado', 'status.simcOutdatedClick': 'Simc desactualizado — clic para actualizar',
+    'status.simcOutdated': 'Simc desactualizado', 'status.simcUnknown': 'Simc — no se puede comprobar',
+    'status.simcUpdateFailed': 'Falló la actualización de Simc', 'status.simcUpdating': 'Actualizando Simc…',
+    'status.simcStillOutdated': 'Simc sigue desactualizado',
+  },
+};
+
+function tr(key) { return I18N[lang]?.[key] ?? I18N.en[key] ?? key; }
+
+function applyI18n(root = document) {
+  document.documentElement.lang = lang;
+  root.querySelectorAll('[data-i18n]').forEach((el) => {
+    const key = el.dataset.i18n;
+    // an element with element children (e.g. the empty-state's <strong>) needs
+    // its markup preserved, not just its text -- those store real HTML
+    if (el.children.length) el.innerHTML = tr(key);
+    else el.textContent = tr(key);
+  });
+  root.querySelectorAll('[data-i18n-title]').forEach((el) => { el.title = tr(el.dataset.i18nTitle); });
+  root.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { el.placeholder = tr(el.dataset.i18nPlaceholder); });
+}
+applyI18n();
+
 function renderLangSwitch() {
   const el = $('lang-switch');
   if (!el) return;
   el.innerHTML = LANGS.map((l) => `
     <button class="lang-btn ${l.id === lang ? 'active' : ''}" data-langid="${esc(l.id)}"
-      title="${l.id === 'en' ? 'Item, set and loot names in English (always available)'
-        : 'Item, set and loot names in Spanish -- the first time you pick this, hit “Refresh data” to download it'}">${esc(l.label)}</button>`).join('');
+      title="${l.id === 'en'
+        ? esc(tr('lang.enTitle'))
+        : esc(tr('lang.esTitle'))}">${esc(l.label)}</button>`).join('');
   el.querySelectorAll('.lang-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       if (btn.dataset.langid === lang) return;
       lang = btn.dataset.langid;
       localStorage.setItem('localbots-lang', lang);
       renderLangSwitch();
+      applyI18n(); // whole interface, not just item/set/loot game-data text
+      $('sim-button').textContent = simLabel(mode);
       // language-specific state is stale now, same as a patch switch
       statCache.clear(); // item stat/effect tooltips carry set-bonus text in the old language
       enchantNameCache.clear();
@@ -499,9 +738,9 @@ fetch('/api/status')
   .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
   .then(renderStatus)
   .catch(() => {
-    setChip('status-app', 'unknown', 'Localbots — can’t check',
+    setChip('status-app', 'unknown', tr('status.appUnknown'),
       'Could not run the update check. If you just updated Localbots, restart the server.');
-    setChip('status-simc', 'unknown', 'Simc — can’t check',
+    setChip('status-simc', 'unknown', tr('status.simcUnknown'),
       'Could not run the update check. If you just updated Localbots, restart the server.');
   });
 
@@ -517,34 +756,34 @@ function renderStatus(s) {
   if (s.allowShutdown === false) $('shutdown-button').classList.add('hidden');
   const app = s.app ?? {};
   if (app.state === 'ok') {
-    setChip('status-app', 'ok', 'Localbots up to date',
+    setChip('status-app', 'ok', tr('status.appOk'),
       `You are on the latest version (${app.local}).`);
   } else if (app.state === 'outdated') {
-    setChip('status-app', 'outdated', 'Localbots update available',
+    setChip('status-app', 'outdated', tr('status.appOutdated'),
       'A newer version is on GitHub. To update: open a terminal in the localbots folder, ' +
       'run "git pull", then restart the server.');
   } else {
-    setChip('status-app', 'unknown', 'Localbots — can’t check',
+    setChip('status-app', 'unknown', tr('status.appUnknown'),
       `Could not reach GitHub to compare versions (${app.reason ?? 'no network?'}).`);
   }
   const simc = s.simc ?? {};
   simcChipClickable = false;
   if (simc.state === 'ok') {
-    setChip('status-simc', 'ok', 'Simc up to date',
+    setChip('status-simc', 'ok', tr('status.simcOk'),
       `${s.simcVersion ?? 'simc'} — matches the live game (${simc.liveGame}).`);
   } else if (simc.state === 'outdated') {
     if (simc.updatable) {
       simcChipClickable = true;
-      setChip('status-simc', 'outdated', 'Simc outdated — click to update',
+      setChip('status-simc', 'outdated', tr('status.simcOutdatedClick'),
         `The game updated to ${simc.liveGame}, but your simc is built for ${simc.simcGame}. ` +
         'Click to pull the latest simc and rebuild it right here (a minute or two; sims wait meanwhile).');
     } else {
-      setChip('status-simc', 'outdated', 'Simc outdated',
+      setChip('status-simc', 'outdated', tr('status.simcOutdated'),
         `The game updated to ${simc.liveGame}, but your simc is built for ${simc.simcGame}. ` +
         'Rebuild/redownload simc (see the README) to sim the latest patch.');
     }
   } else {
-    setChip('status-simc', 'unknown', 'Simc — can’t check',
+    setChip('status-simc', 'unknown', tr('status.simcUnknown'),
       `${s.simcVersion ?? 'simc'} — could not fetch the live game version (${simc.reason ?? 'no network?'}).`);
   }
   $('status-simc').classList.toggle('clickable', simcChipClickable);
@@ -564,16 +803,16 @@ $('status-simc').addEventListener('click', async () => {
     const resp = await fetch('/api/simc/update', { method: 'POST' });
     const body = await resp.json();
     if (!resp.ok) {
-      setChip('status-simc', 'outdated', 'Simc update failed', body.error ?? 'unknown error');
+      setChip('status-simc', 'outdated', tr('status.simcUpdateFailed'), body.error ?? 'unknown error');
       simcUpdating = false;
       return;
     }
   } catch {
-    setChip('status-simc', 'outdated', 'Simc update failed', 'Could not reach the server.');
+    setChip('status-simc', 'outdated', tr('status.simcUpdateFailed'), 'Could not reach the server.');
     simcUpdating = false;
     return;
   }
-  setChip('status-simc', 'unknown', 'Simc updating…', 'Pulling the latest simc source.');
+  setChip('status-simc', 'unknown', tr('status.simcUpdating'), 'Pulling the latest simc source.');
   pollSimcUpdate();
 });
 
@@ -587,13 +826,13 @@ async function pollSimcUpdate() {
   }
   if (st.running) {
     const pct = st.progress ? ` ${Math.round((st.progress.done / st.progress.total) * 100)}%` : '';
-    setChip('status-simc', 'unknown', `Simc updating…${pct}`, st.step ?? 'working');
+    setChip('status-simc', 'unknown', `${tr('status.simcUpdating')}${pct}`, st.step ?? 'working');
     setTimeout(pollSimcUpdate, 2000);
     return;
   }
   simcUpdating = false;
   if (st.error) {
-    setChip('status-simc', 'outdated', 'Simc update failed',
+    setChip('status-simc', 'outdated', tr('status.simcUpdateFailed'),
       `${st.error} — you can update manually instead (see the README).`);
     return;
   }
@@ -604,7 +843,7 @@ async function pollSimcUpdate() {
     const s = await (await fetch('/api/status')).json();
     renderStatus(s);
     if (s.simc?.state === 'outdated') {
-      setChip('status-simc', 'outdated', 'Simc still outdated',
+      setChip('status-simc', 'outdated', tr('status.simcStillOutdated'),
         `You now have the latest simc, but simc itself has not shipped data for game build ${s.simc.liveGame} yet — ` +
         'it usually catches up within a day or two. Click to try again later.');
     }
@@ -774,7 +1013,8 @@ $('preset-all-on').addEventListener('click', () => setAllBuffsConsumables(true))
 $('preset-all-off').addEventListener('click', () => setAllBuffsConsumables(false));
 
 // ---------- tabs ----------
-const SIM_LABELS = { quick: 'Sim it', topgear: 'Compare gear', droptimizer: 'Run droptimizer', statweights: 'Calc stat weights' };
+const SIM_LABEL_KEYS = { quick: 'sim.button', topgear: 'sim.compareGear', droptimizer: 'sim.runDroptimizer', statweights: 'sim.calcStatWeights' };
+function simLabel(m) { return tr(SIM_LABEL_KEYS[m] ?? 'sim.button'); }
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     mode = tab.dataset.mode;
@@ -783,7 +1023,7 @@ document.querySelectorAll('.tab').forEach((tab) => {
     $('dropt-section').classList.toggle('hidden', mode !== 'droptimizer');
     $('quick-nav-gear').classList.toggle('hidden', mode !== 'topgear');
     $('quick-nav-loot').classList.toggle('hidden', mode !== 'droptimizer');
-    $('sim-button').textContent = SIM_LABELS[mode];
+    $('sim-button').textContent = simLabel(mode);
     $('sim-bar-status').textContent = '';
     if (mode === 'topgear') refreshGearList();
     if (mode === 'droptimizer') refreshDroptimizer();
@@ -1139,7 +1379,15 @@ async function refreshGearList() {
   updateGearCount();
 }
 
+const SLOT_KEYS = {
+  head: 'slot.head', neck: 'slot.neck', shoulder: 'slot.shoulder', back: 'slot.back', chest: 'slot.chest',
+  wrist: 'slot.wrist', hands: 'slot.hands', waist: 'slot.waist', legs: 'slot.legs', feet: 'slot.feet',
+  finger1: 'slot.finger1', finger2: 'slot.finger2', trinket1: 'slot.trinket1', trinket2: 'slot.trinket2',
+  main_hand: 'slot.mainHand', off_hand: 'slot.offHand', weapons: 'slot.weapons',
+};
 function prettySlot(slot) {
+  const key = SLOT_KEYS[slot];
+  if (key && I18N[lang]?.[key]) return tr(key);
   return slot.replace(/_/g, ' ').replace(/(finger|trinket)([12])/, '$1 $2');
 }
 
@@ -1847,14 +2095,15 @@ function renderResult(r) {
   $('results-area').classList.remove('hidden');
 
   $('dps-value').textContent = Math.round(r.dps).toLocaleString();
+  const es = lang === 'es';
   const meta = [
     r.player.name,
     r.player.spec,
-    `±${Math.round(r.dpsError).toLocaleString()} DPS error`,
-    `${r.targets} target${r.targets > 1 ? 's' : ''}`,
-    `${Math.round(r.fightLength)}s fight`,
-    r.iterations ? `${r.iterations.toLocaleString()} iterations` : null,
-    r.elapsedSeconds ? `simmed in ${r.elapsedSeconds.toFixed(1)}s` : null,
+    es ? `±${Math.round(r.dpsError).toLocaleString()} DPS de error` : `±${Math.round(r.dpsError).toLocaleString()} DPS error`,
+    es ? `${r.targets} objetivo${r.targets > 1 ? 's' : ''}` : `${r.targets} target${r.targets > 1 ? 's' : ''}`,
+    es ? `combate de ${Math.round(r.fightLength)}s` : `${Math.round(r.fightLength)}s fight`,
+    r.iterations ? (es ? `${r.iterations.toLocaleString()} iteraciones` : `${r.iterations.toLocaleString()} iterations`) : null,
+    r.elapsedSeconds ? (es ? `simulado en ${r.elapsedSeconds.toFixed(1)}s` : `simmed in ${r.elapsedSeconds.toFixed(1)}s`) : null,
   ].filter(Boolean).join(' · ');
   $('dps-meta').textContent = meta;
 
@@ -1909,11 +2158,13 @@ function renderTopGear(r) {
   $('topgear-area').classList.remove('hidden');
 
   $('tg-baseline').textContent = Math.round(r.dps).toLocaleString();
+  const tgEs = lang === 'es';
   $('tg-meta').textContent = [
     r.player.name,
     r.player.spec,
-    `${r.topgear.length} item${r.topgear.length === 1 ? '' : 's'} compared`,
-    r.elapsedSeconds ? `simmed in ${r.elapsedSeconds.toFixed(1)}s` : null,
+    tgEs ? `${r.topgear.length} objeto${r.topgear.length === 1 ? '' : 's'} comparado${r.topgear.length === 1 ? '' : 's'}`
+      : `${r.topgear.length} item${r.topgear.length === 1 ? '' : 's'} compared`,
+    r.elapsedSeconds ? (tgEs ? `simulado en ${r.elapsedSeconds.toFixed(1)}s` : `simmed in ${r.elapsedSeconds.toFixed(1)}s`) : null,
     skippedNote || null,
   ].filter(Boolean).join(' · ');
 
@@ -1938,7 +2189,7 @@ function renderTopGear(r) {
   $('tg-filters').classList.toggle('hidden', !tgShowFilters);
   if (tgShowFilters) {
     $('tg-chips').innerHTML = ['All', ...sections].map((s, i) =>
-      `<button class="chip ${i === 0 ? 'active' : ''}" data-chip="${i === 0 ? '' : esc(s)}">${esc(s)}</button>`).join('');
+      `<button class="chip ${i === 0 ? 'active' : ''}" data-chip="${i === 0 ? '' : esc(s)}">${esc(i === 0 ? tr('filter.all') : translateChipLabel(s))}</button>`).join('');
     document.querySelectorAll('#tg-chips .chip').forEach((chip) => {
       chip.addEventListener('click', () => {
         tgActiveChip = chip.dataset.chip || null;
@@ -1950,7 +2201,7 @@ function renderTopGear(r) {
     const slots = [...new Set(tgRows.map((t) => slotFamily(t.placement)).filter(Boolean))];
     $('tg-slot-chips').innerHTML = slots.length > 1
       ? ['All slots', ...slots].map((s, i) =>
-        `<button class="chip ${i === 0 ? 'active' : ''}" data-slotchip="${i === 0 ? '' : esc(s)}">${esc(s)}</button>`).join('')
+        `<button class="chip ${i === 0 ? 'active' : ''}" data-slotchip="${i === 0 ? '' : esc(s)}">${esc(i === 0 ? tr('filter.allSlots') : s)}</button>`).join('')
       : '';
     document.querySelectorAll('#tg-slot-chips .chip').forEach((chip) => {
       chip.addEventListener('click', () => {
@@ -1968,10 +2219,26 @@ function renderTopGear(r) {
 // group paired slots into one chip: rings, trinkets, weapons
 function slotFamily(placement) {
   if (!placement) return null;
-  if (/^finger/.test(placement)) return 'Rings';
-  if (/^trinket/.test(placement)) return 'Trinkets';
-  if (placement === 'main_hand' || placement === 'off_hand') return 'Weapons';
-  return placement.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+  if (/^finger/.test(placement)) return tr('filter.rings');
+  if (/^trinket/.test(placement)) return tr('filter.trinkets');
+  if (placement === 'main_hand' || placement === 'off_hand') return titleCase(tr('slot.weapons'));
+  return titleCase(prettySlot(placement));
+}
+
+// Known, fixed category names get a translated chip label; anything else
+// (a raid/dungeon boss name, an item name used as a droptimizer section) has
+// no translation data available and is shown as-is.
+const CHIP_LABEL_KEYS = {
+  Consumables: 'filter.consumables', Enchants: 'filter.enchants', Gems: 'filter.gems',
+  'Omnium Folio': 'filter.omniumFolio', 'Talent loadouts': 'filter.talentLoadouts',
+  Bags: 'filter.bags', Equipped: 'filter.equipped', Catalyzed: 'filter.catalyzed', Search: 'filter.search',
+  Upgrades: 'filter.upgrades', Loadout: 'filter.loadout', Rings: 'filter.rings', Trinkets: 'filter.trinkets', Weapon: 'filter.weapon',
+};
+function translateChipLabel(s) {
+  if (CHIP_LABEL_KEYS[s]) return tr(CHIP_LABEL_KEYS[s]);
+  const row = String(s).match(/^Row (\d+)$/); // Omnium Folio's per-row sub-label (see enhancements.js)
+  if (row) return `${tr('filter.row')} ${row[1]}`;
+  return s;
 }
 
 $('tg-search').addEventListener('input', renderTopGearRows);
@@ -2054,7 +2321,7 @@ function rowHtml(t, maxAbs) {
     : '';
   const info = {
     name: t.itemName, ilvl: t.ilvl, slot: prettySlot(t.placement),
-    source: [t.section, t.boss].filter(Boolean).join(' → '),
+    source: [translateChipLabel(t.section), translateChipLabel(t.boss)].filter(Boolean).join(' → '),
     enchantId: eq?.enchantId, gemIds: eq?.gemIds,
     craftedStats: craftedStatsFromLine(t.line),
     ...(trackStepFor(t.track, t.ilvl) ?? {}),
@@ -2066,7 +2333,7 @@ function rowHtml(t, maxAbs) {
         ${t.offHandLost ? '<span class="tier-tag warn" title="A two-hander fills both hands, so this was simmed with your off-hand taken off — its stats are not counted">off-hand removed</span>' : ''}
         <span class="slot-tag">→ ${target}</span>${caret}
         ${itemId ? enchGemSubline(eq?.enchantId, eq?.gemIds) : ''}</span></span></td>
-    <td><span class="source-tag">${esc(t.section)}</span>${t.boss ? `<span class="src-boss">→ ${esc(t.boss)}</span>` : ''}</td>
+    <td><span class="source-tag">${esc(translateChipLabel(t.section))}</span>${t.boss ? `<span class="src-boss">→ ${esc(translateChipLabel(t.boss))}</span>` : ''}</td>
     <td class="num" title="Mean ${Math.round(t.dps).toLocaleString()} DPS ± ${Math.round(t.error).toLocaleString()} (margin of error)">${Math.round(t.dps).toLocaleString()}</td>
     <td class="num ${cls}" title="${sign}${Math.round(t.delta).toLocaleString()} DPS ± ${Math.round(t.error).toLocaleString()} margin of error vs equipped">${sign}${Math.round(t.delta).toLocaleString()}</td>
     <td><div class="share-bar">
@@ -2139,11 +2406,11 @@ let tgDetailSeq = 0;
 // picks combine well but their gains are an estimate, not a promise.
 function bucketFor(t) {
   const k = t.sourceKind;
-  if (k === 'talents') return { key: 'talents', label: 'Talent build', order: 1 };
-  if (k === 'enchants') return { key: `e:${t.boss}`, label: `Enchant — ${t.boss}`, order: 2 };
-  if (k === 'gems') return { key: `g:${t.boss}`, label: t.boss, order: 3 };
-  if (k === 'consumables') return { key: `c:${t.boss}`, label: t.boss, order: 4 };
-  if (k === 'folio') return { key: `f:${t.boss}`, label: `Omnium Folio · ${t.boss}`, order: 5 };
+  if (k === 'talents') return { key: 'talents', label: tr('bucket.talentBuild'), order: 1 };
+  if (k === 'enchants') return { key: `e:${t.boss}`, label: `${tr('bucket.enchant')} — ${translateChipLabel(t.boss)}`, order: 2 };
+  if (k === 'gems') return { key: `g:${t.boss}`, label: translateChipLabel(t.boss), order: 3 };
+  if (k === 'consumables') return { key: `c:${t.boss}`, label: translateChipLabel(t.boss), order: 4 };
+  if (k === 'folio') return { key: `f:${t.boss}`, label: `${tr('filter.omniumFolio')} · ${translateChipLabel(t.boss)}`, order: 5 };
   if (k === 'upgrades') return null; // upgrading is not an either/or choice
   return { key: `s:${t.placement}`, label: prettySlot(t.placement), order: 6 };
 }
@@ -2196,8 +2463,7 @@ function renderTopGearGrid() {
     </div>`;
   };
   const half = Math.ceil(slots.length / 2);
-  el.innerHTML = `<p class="hint">Highlighted slots beat what you have equipped — enchant &amp; gems shown for the
-      rest carry over to every candidate in that slot in Details.</p>
+  el.innerHTML = `<p class="hint">${esc(tr('results.highlightedHint'))}</p>
     <div class="pd-grid">
       <div class="pd-col">${slots.slice(0, half).map(cellFor).join('')}</div>
       <div class="pd-col">${slots.slice(half).map(cellFor).join('')}</div>
@@ -2250,7 +2516,7 @@ function renderBestSetup() {
       ? ' <span class="bs-shaky" title="This gain is small next to the run\'s margin of error — re-run at a higher precision to confirm it">close to the margin</span>' : '';
     const bsInfo = {
       name: t.itemName, ilvl: t.ilvl, slot: prettySlot(t.placement),
-      source: [t.section, t.boss].filter(Boolean).join(' → '),
+      source: [translateChipLabel(t.section), translateChipLabel(t.boss)].filter(Boolean).join(' → '),
       enchantId: eq?.enchantId, gemIds: eq?.gemIds,
       craftedStats: craftedStatsFromLine(t.line),
       ...(trackStepFor(t.track, t.ilvl) ?? {}),

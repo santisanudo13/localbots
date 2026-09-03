@@ -218,7 +218,10 @@ app.get('/api/history/:id/report', async (req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Content-Disposition',
     `attachment; filename="${reportFilename(entry).replace(/"/g, '')}"`);
-  res.send(buildReportHtml(entry, { icons, consumableLabels, gemLabels, enchantLabels, qualities, itemNames }));
+  res.send(buildReportHtml(entry, {
+    icons, consumableLabels, gemLabels, enchantLabels, qualities, itemNames,
+    locale: lang === 'es' ? 'es' : 'en',
+  }));
 });
 
 // every item the report draws a tile for
