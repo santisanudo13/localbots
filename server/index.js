@@ -21,8 +21,7 @@ import { detectSimcSource, startSimcUpdate } from './simcUpdater.js';
 import { invalidateStatus } from './status.js';
 import { fetchCharacter, buildProfile as buildArmoryProfile } from './armory.js';
 import { buildIconMap, loadIconMap } from './itemIcons.js';
-import { loadScaling, loadItemTables, itemStats, effectContext, clearScalingCache } from './itemStats.js';
-import { loadEffectData, itemEffects, renderSpell, clearEffectCache } from './itemEffects.js';
+import { loadItemTables } from './itemStats.js';
 import { crestPlan, achievementProgress } from './crests.js';
 
 // Optional local secrets (Blizzard API credentials for the Armory tab). The
@@ -91,8 +90,6 @@ app.post('/api/simc/update', (req, res) => {
     if (ptrVersion && !/PTR/i.test(ptrVersion)) ptrVersion = null;
     clearResolveCache();
     clearTraitCache(); // talent tables ship with the binary we just replaced
-    clearScalingCache(); // ...and so do the item scaling curves
-    clearEffectCache(); // ...and the item effect tables
     for (const p of patches.values()) {
       p.available = !!p.config && (!p.def.ptr || !!ptrVersion);
       p.reason = !p.config ? `missing data/${p.def.seasonFile}`
@@ -690,53 +687,6 @@ function detectItemSets(equipped, bagItems, itemSetMap) {
 // use Blizzard's armory API.
 // Icon file ids for a batch of item ids. The page asks for whatever it is about
 // to draw and caches the answer, so this stays one small request per screen.
-// Tooltip data for a batch of "itemId:itemLevel" pairs, or
-// "itemId:itemLevel:statSourceId" for a Catalyst-converted piece, which wears
-// the secondaries of whatever it was made from. Stats are computed the way the
-// game computes them (see server/itemStats.js) and cached per patch.
-app.get('/api/items', (req, res) => {
-  const p = getPatch(req);
-  const icons = p.iconMap ?? patches.get(DEFAULT_PATCH_ID).iconMap;
-  p.itemTables ??= loadItemTables(p.paths.cacheDir);
-  const scaling = loadScaling(simcPath, p.def.ptr);
-  const out = {};
-  for (const pair of String(req.query.q ?? '').split(',').slice(0, 60)) {
-    const [rawId, rawIlvl, rawSrc, rawCraft] = pair.split(':');
-    const id = Number(rawId);
-    const ilvl = Number(rawIlvl);
-    if (!id) continue;
-    // the crafter's two chosen secondaries ("32-49"), for resolving a crafted
-    // item's placeholder stat rows to real ones -- see itemStats.js
-    const craftedStats = rawCraft ? rawCraft.split('-').map(Number) : null;
-    const entry = { icon: icons?.get(id) ?? null };
-    const st = itemStats(id, ilvl, p.itemTables, scaling, Number(rawSrc) || null, p.locale, craftedStats);
-    if (st) Object.assign(entry, st);
-    const fx = loadEffectData(simcPath, p.def.ptr);
-    const ctx = effectContext(id, ilvl, p.itemTables, scaling);
-    if (fx && ctx) entry.effects = itemEffects(id, ilvl, fx, ctx);
-    // tier pieces carry their set's bonuses; the raid drops tokens rather than
-    // the pieces themselves, so this is often the only place to read them
-    const setMap = p.itemSetMap ?? patches.get(DEFAULT_PATCH_ID).itemSetMap;
-    const setId = setMap?.byItem?.get(id);
-    const set = setId != null ? setMap.sets.get(setId) : null;
-    if (set && fx && ctx) {
-      const bonuses = [];
-      for (const b of set.bonuses) {
-        const text = renderSpell(b.spellId, fx, ctx);
-        if (text) bonuses.push({ threshold: b.threshold, text });
-      }
-      if (bonuses.length) {
-        entry.set = {
-          name: set.name, pieces: set.items.length, bonuses,
-          items: set.items.map((sid) => ({ id: sid, name: p.itemTables.items.get(sid)?.name ?? null })),
-        };
-      }
-    }
-    out[pair] = entry;
-  }
-  res.json({ items: out });
-});
-
 // Raidbots' Top Gear "Item Search": add ANY equippable item by name, at any
 // item level -- not limited to what the export's bags/vault happen to list.
 // Search runs over the same local item database everything else reads
