@@ -380,7 +380,10 @@ button.mini {
 .gear-card-name { font-size: 15px; }
 /* results view: same bigger size as the setup page's gear cards, not the
    compact 26px default (which stays for tighter contexts like item search). */
-#best-setup .item-tile, #topgear-table .item-tile, #tg-gear .item-tile { width: 40px; height: 40px; border-radius: 6px; }
+/* :not(.mini-icon) so this doesn't also blow up the gem/enchant subline's
+   own small icons -- those stay at the 14px mini-icon size below. */
+#best-setup .item-tile:not(.mini-icon), #topgear-table .item-tile:not(.mini-icon),
+#tg-gear .item-tile:not(.mini-icon) { width: 40px; height: 40px; border-radius: 6px; }
 #gear-list input { accent-color: var(--accent); }
 #gear-list .ilvl {
   color: var(--muted);
