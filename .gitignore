@@ -12,3 +12,4 @@ Top Gear - Raidbots.html
 .env
 .env.*
 !.env.example
+.playwright-mcp/
