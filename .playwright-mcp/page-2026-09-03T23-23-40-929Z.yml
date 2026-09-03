@@ -1,0 +1,123 @@
+- generic [active] [ref=f6e1]:
+  - banner [ref=f6e2]:
+    - heading "Localbots" [level=1] [ref=f6e3]
+    - generic [ref=f6e4]: tu hardware, tus simulaciones
+    - navigation [ref=f6e5]:
+      - button "Nueva sim" [ref=f6e6] [cursor=pointer]
+      - button "Historial" [ref=f6e7] [cursor=pointer]
+    - navigation
+    - navigation [ref=f6e8]:
+      - button "EN" [ref=f6e9] [cursor=pointer]
+      - button "ES" [ref=f6e10] [cursor=pointer]
+    - generic [ref=f6e11]:
+      - generic "You are on the latest version (fb1afcb)." [ref=f6e12]: Localbots actualizado
+      - generic "SimulationCraft 1210-01 for World of Warcraft 12.1.0.69587 Live (hotfix 2026-09-01/69587) — matches the live game (12.1.0.69587)." [ref=f6e15]: Simc actualizado
+  - navigation [ref=f6e18]:
+    - generic [ref=f6e19]: "Navegación rápida:"
+    - link "Personaje" [ref=f6e20] [cursor=pointer]:
+      - /url: "#sec-character"
+    - link "Combate" [ref=f6e21] [cursor=pointer]:
+      - /url: "#sec-fight"
+    - link "Mejoras" [ref=f6e22] [cursor=pointer]:
+      - /url: "#sec-buffs"
+    - link "Consumibles" [ref=f6e23] [cursor=pointer]:
+      - /url: "#sec-consumables"
+  - main [ref=f6e24]:
+    - generic [ref=f6e25]:
+      - generic [ref=f6e26]:
+        - button "Sim rápida" [ref=f6e27] [cursor=pointer]
+        - button "Mejor equipo" [ref=f6e28] [cursor=pointer]
+        - button "Droptimizer" [ref=f6e29] [cursor=pointer]
+        - button "Peso de stats" [ref=f6e30] [cursor=pointer]
+      - heading "Personaje" [level=2] [ref=f6e31]
+      - tablist "Character source" [ref=f6e32]:
+        - tab "Addon SimC" [selected] [ref=f6e33] [cursor=pointer]
+        - tab "Armería" [ref=f6e34] [cursor=pointer]
+      - generic [ref=f6e35]:
+        - paragraph [ref=f6e36]:
+          - text: "En el juego: escribe"
+          - code [ref=f6e37]: /simc
+          - text: ", copia el texto (Ctrl+C / Cmd+C) y pégalo abajo."
+        - textbox "# Pega aquí tu export del addon /simc warrior=\"Tunombre\" level=90 spec=fury ..." [ref=f6e38]:
+          - /placeholder: "# Pega aquí tu export del addon /simc\nwarrior=\"Tunombre\"\nlevel=90\nspec=fury\n..."
+          - text: mage="Cirumajo" level=80 race=troll region=eu server=area-52 role=spell professions=inscription=100/tailoring=100 spec=arcane head=,id=249343,bonus_id=10884,gem_id=240983 finger1=,id=242281,bonus_id=10884,gem_id=240900,enchant_id=7340
+      - heading "Combate" [level=2] [ref=f6e39]
+      - generic [ref=f6e40]:
+        - generic [ref=f6e41]:
+          - generic [ref=f6e42]: Estilo de combate
+          - combobox "Estilo de combate" [ref=f6e43]:
+            - option "Patchwerk (un objetivo, jefe de banda)" [selected]
+            - option "DungeonSlice (estilo M+ con grupos)"
+            - option "HecticAddCleave (oleadas intensas de secuaces)"
+            - option "Muñeco de entrenamiento (quieto y a pegar)"
+        - generic [ref=f6e44]:
+          - generic [ref=f6e45]: Enemigos
+          - spinbutton "Enemigos" [ref=f6e46]: "1"
+        - generic [ref=f6e47]:
+          - generic [ref=f6e48]: Duración del combate (segundos)
+          - spinbutton "Duración del combate (segundos)" [ref=f6e49]: "300"
+        - generic [ref=f6e50]:
+          - generic [ref=f6e51]: Precisión
+          - combobox "Precisión" [ref=f6e52]:
+            - option "Rápida (error objetivo 0.5%)" [selected]
+            - option "Normal (error objetivo 0.2%)"
+            - option "Alta (error objetivo 0.1%)"
+            - option "Extrema (error objetivo 0.05%, nivel Smart Sim de Raidbots)"
+            - option "Iteraciones fijas…"
+      - heading "Mejoras de banda" [level=2] [ref=f6e53]
+      - generic [ref=f6e54]:
+        - button "Todo activado" [ref=f6e55] [cursor=pointer]
+        - button "Todo desactivado" [ref=f6e56] [cursor=pointer]
+      - generic [ref=f6e57]:
+        - generic [ref=f6e58] [cursor=pointer]:
+          - checkbox "Ansia de sangre / Heroísmo" [checked] [ref=f6e59]
+          - generic [ref=f6e60]: Ansia de sangre / Heroísmo
+        - generic [ref=f6e61] [cursor=pointer]:
+          - checkbox "Intelecto arcano" [checked] [ref=f6e62]
+          - generic [ref=f6e63]: Intelecto arcano
+        - generic [ref=f6e64] [cursor=pointer]:
+          - checkbox "Grito de guerra" [checked] [ref=f6e65]
+          - generic [ref=f6e66]: Grito de guerra
+        - generic [ref=f6e67] [cursor=pointer]:
+          - checkbox "Marca de la salvaje" [checked] [ref=f6e68]
+          - generic [ref=f6e69]: Marca de la salvaje
+        - generic [ref=f6e70] [cursor=pointer]:
+          - 'checkbox "PS: Fortaleza" [checked] [ref=f6e71]'
+          - generic [ref=f6e72]: "PS: Fortaleza"
+        - generic [ref=f6e73] [cursor=pointer]:
+          - checkbox "Toque místico" [checked] [ref=f6e74]
+          - generic [ref=f6e75]: Toque místico
+        - generic [ref=f6e76] [cursor=pointer]:
+          - checkbox "Marca del caos" [checked] [ref=f6e77]
+          - generic [ref=f6e78]: Marca del caos
+        - generic [ref=f6e79] [cursor=pointer]:
+          - checkbox "Furia celeste" [checked] [ref=f6e80]
+          - generic [ref=f6e81]: Furia celeste
+        - generic [ref=f6e82] [cursor=pointer]:
+          - checkbox "Marca de caza" [checked] [ref=f6e83]
+          - generic [ref=f6e84]: Marca de caza
+      - heading "Consumibles" [level=2] [ref=f6e85]
+      - generic [ref=f6e86]:
+        - generic [ref=f6e87] [cursor=pointer]:
+          - checkbox "Frasco" [checked] [ref=f6e88]
+          - generic [ref=f6e89]: Frasco
+        - generic [ref=f6e90] [cursor=pointer]:
+          - checkbox "Comida" [checked] [ref=f6e91]
+          - generic [ref=f6e92]: Comida
+        - generic [ref=f6e93] [cursor=pointer]:
+          - checkbox "Poción" [checked] [ref=f6e94]
+          - generic [ref=f6e95]: Poción
+        - generic [ref=f6e96] [cursor=pointer]:
+          - checkbox "Runa de aumento" [checked] [ref=f6e97]
+          - generic [ref=f6e98]: Runa de aumento
+        - generic [ref=f6e99] [cursor=pointer]:
+          - checkbox "Aceite de arma" [checked] [ref=f6e100]
+          - generic [ref=f6e101]: Aceite de arma
+    - button "Simular" [ref=f6e103] [cursor=pointer]
+  - contentinfo [ref=f6e104]:
+    - generic [ref=f6e105]:
+      - text: Localbots corre enteramente en esta máquina ·
+      - link "Localbots en GitHub" [ref=f6e106] [cursor=pointer]:
+        - /url: https://github.com/santisanudo13/localbots
+    - button "Guardar informe" [disabled] [ref=f6e107] [cursor=pointer]
+    - button "Apagar servidor" [ref=f6e108] [cursor=pointer]
