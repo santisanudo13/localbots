@@ -93,7 +93,7 @@ sudo ln -sf ~/tools/simc-src/build/simc /usr/local/bin/simc
 ## Running Localbots
 
 ```bash
-git clone https://github.com/balovich-matje/localbots.git
+git clone https://github.com/santisanudo13/localbots.git
 cd localbots
 npm install
 npm start
@@ -165,7 +165,7 @@ Node, simc, or the repo. You don't install SimulationCraft yourself: the image
 compiles it during the build.
 
 ```bash
-git clone https://github.com/balovich-matje/localbots.git
+git clone https://github.com/santisanudo13/localbots.git
 cd localbots
 docker compose up -d --build
 ```

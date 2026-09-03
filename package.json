@@ -13,7 +13,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/balovich-matje/localbots.git"
+    "url": "https://github.com/santisanudo13/localbots.git"
   },
   "dependencies": {
     "express": "^4.21.0"

@@ -142,7 +142,7 @@ function consumableList(consumables, labels) {
 }
 
 // icons: { [itemId]: iconFileId } — optional; without it the tiles are blank
-export function buildReportHtml(entry, { icons = null, consumableLabels = null, appUrl = 'https://github.com/balovich-matje/localbots' } = {}) {
+export function buildReportHtml(entry, { icons = null, consumableLabels = null, appUrl = 'https://github.com/santisanudo13/localbots' } = {}) {
   const r = entry.result ?? {};
   const p = r.player ?? {};
   const when = new Date(entry.savedAt ?? Date.now());
