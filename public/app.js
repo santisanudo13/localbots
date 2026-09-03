@@ -1087,7 +1087,7 @@ async function refreshGearList() {
           const equipped = item.section === 'Equipped';
           return `
       <label class="gear-card${equipped ? ' locked' : ''}" ${equipped ? 'title="Currently equipped — always simmed as the baseline every candidate is compared against"' : ''}>
-        <input type="checkbox" class="gear-card-check" data-gear-index="${i}" checked ${equipped ? 'disabled' : ''}>
+        <input type="checkbox" class="gear-card-check" data-gear-index="${i}" ${equipped ? 'checked disabled' : ''}>
         <span class="gear-card-icon" ${tileDataAttrs(item.id, info)}>${itemTileWithBadge(item.id, info, item)}</span>
         <span class="gear-card-body">
           <span class="gear-card-name">${esc(item.name)}${trackTagFor(item) ? ` <span class="track-tag tier-${trackTagFor(item).toLowerCase()}">(${trackTagFor(item)})</span>` : ''}</span>
