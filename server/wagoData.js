@@ -119,7 +119,7 @@ export async function downloadTables(onProgress = () => {}, opts = {}) {
   for (const [i, table] of names.entries()) {
     onProgress({ table, index: i + 1, total: names.length });
     const resp = await fetch(`https://wago.tools/db2/${table}/csv${query ? `?${query}` : ''}`, {
-      headers: { 'User-Agent': 'localbots (github.com/balovich-matje/localbots)' },
+      headers: { 'User-Agent': 'localbots (github.com/santisanudo13/localbots)' },
     });
     if (!resp.ok) throw new Error(`wago.tools ${table}: HTTP ${resp.status}`);
     writeFileSync(join(cacheDir, `${table}.csv`), await resp.text());
@@ -129,7 +129,7 @@ export async function downloadTables(onProgress = () => {}, opts = {}) {
   onProgress({ table: 'bonuses.json (raidbots)', index: names.length, total: names.length });
   const channel = opts.bonusesChannel === 'ptr' ? 'ptr' : 'live';
   const resp = await fetch(`https://www.raidbots.com/static/data/${channel}/bonuses.json`, {
-    headers: { 'User-Agent': 'localbots (github.com/balovich-matje/localbots)' },
+    headers: { 'User-Agent': 'localbots (github.com/santisanudo13/localbots)' },
   });
   if (resp.ok) writeFileSync(join(cacheDir, 'bonuses.json'), await resp.text());
   // Record which game build these tables came from — cacheStatus compares it

@@ -84,7 +84,7 @@ async function fetchFromRaiderIo({ region, realm, name }, { timeoutMs = 20000 } 
   let resp;
   try {
     resp = await fetch(url, {
-      headers: { accept: 'application/json', 'User-Agent': 'localbots (github.com/balovich-matje/localbots)' },
+      headers: { accept: 'application/json', 'User-Agent': 'localbots (github.com/santisanudo13/localbots)' },
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {

@@ -46,7 +46,7 @@ docker builder prune
 ## Setup
 
 ```bash
-git clone https://github.com/balovich-matje/localbots.git
+git clone https://github.com/santisanudo13/localbots.git
 ```
 
 ```bash

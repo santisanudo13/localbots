@@ -259,7 +259,7 @@ function consumableList(consumables, labels) {
 // icons: { [itemId]: iconFileId } — optional; without it the tiles are blank
 export function buildReportHtml(entry, {
   icons = null, consumableLabels = null, gemLabels = null, enchantLabels = null, qualities = null,
-  appUrl = 'https://github.com/balovich-matje/localbots',
+  appUrl = 'https://github.com/santisanudo13/localbots',
 } = {}) {
   const r = entry.result ?? {};
   const p = r.player ?? {};
