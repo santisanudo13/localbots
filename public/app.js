@@ -2625,13 +2625,15 @@ function enchGemSubline(enchantId, gemIds) {
     const name = gemOrEnchantLabel(enchantId, 'enchant');
     // enchants have no item id (they're a SpellItemEnchantment row, not an
     // item), so this hovercard is name-only -- no stats to fetch, unlike a
-    // real item or gem. Still needs `data-name` alone to trigger the shared
-    // hover handler (see its `[data-item], [data-name]` selector).
-    parts.push(`<span class="enchgem-item"><img class="mini-icon" alt="" src="${ENCHANT_ICON_URL}"
-      data-name="${esc(name)}" data-source="Enchant"> ${esc(name)}</span>`);
+    // real item or gem. The data attrs sit on the WRAPPING span, not just the
+    // icon -- otherwise hovering the name text (not the tiny icon itself)
+    // bubbles past it to the parent item row's own data-item and shows that
+    // item's hovercard instead of the enchant's.
+    parts.push(`<span class="enchgem-item" data-name="${esc(name)}" data-source="Enchant"><img class="mini-icon" alt="" src="${ENCHANT_ICON_URL}"> ${esc(name)}</span>`);
   }
   for (const g of gemIds ?? []) {
-    parts.push(`<span class="enchgem-item">${itemTile(g, { name: gemOrEnchantLabel(g, 'gem'), mini: true })} ${esc(gemOrEnchantLabel(g, 'gem'))}</span>`);
+    const gInfo = { name: gemOrEnchantLabel(g, 'gem'), mini: true };
+    parts.push(`<span class="enchgem-item" ${tileDataAttrs(g, gInfo)}>${itemTile(g, gInfo)} ${esc(gInfo.name)}</span>`);
   }
   return parts.length ? `<span class="hint-inline block enchgem">${parts.join('')}</span>` : '';
 }
