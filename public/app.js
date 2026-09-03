@@ -1176,28 +1176,28 @@ function trackInfo(item) {
   return { track: item.track, stepIdx: item.stepIdx };
 }
 
-// Sets every bag item to the highest step its own track's crests can still
-// afford — crest cost per step and the currency id for each track come from
-// data/season.json's upgradeCrests (hand-confirmed against a live export).
+// Sets every ALREADY-SELECTED item (equipped gear is always selected/locked,
+// same as any bag item someone ticked themselves) to the highest step its own
+// track's crests can still afford — crest cost per step and the currency id
+// for each track come from data/season.json's upgradeCrests (hand-confirmed
+// against a live export). Never ticks a box on its own: that would silently
+// add items to what gets simmed that the user never chose to include.
 function applyMaxAffordableUpgrades() {
   let changed = 0;
   gearItems.forEach((item, i) => {
+    const box = document.querySelector(`#gear-list input[data-gear-index="${i}"]`);
+    if (!box?.checked) return;
     item.targetIlvl = maxAffordableIlvlFor(item);
     const sel = document.querySelector(`#gear-list select.ilvl-select[data-gear-index="${i}"]`);
     if (sel && [...sel.options].some((o) => o.value === String(item.targetIlvl ?? ''))) {
       sel.value = String(item.targetIlvl ?? '');
     }
-    // bag items start unticked; an item worth upgrading is worth simming
-    if (item.targetIlvl) {
-      const box = document.querySelector(`#gear-list input[data-gear-index="${i}"]`);
-      if (box) box.checked = true;
-      changed++;
-    }
+    if (item.targetIlvl) changed++;
   });
   updateGearCount();
   $('gear-count').textContent += changed
-    ? ` · ${changed} item${changed === 1 ? '' : 's'} set to their highest affordable step`
-    : ' · nothing your crests can upgrade further';
+    ? ` · ${changed} selected item${changed === 1 ? '' : 's'} set to their highest affordable step`
+    : ' · nothing selected that your crests can upgrade further';
 }
 
 function updateGearCount() {
