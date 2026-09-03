@@ -87,6 +87,20 @@ const I18N = {
     'gear.voidcores': '+ Voidcores (weapons & trinkets)',
     'gear.trackUpgradesHint': 'Each item sims alone (plus one "all together" row). Item levels come from your export; the track is guessed from the level — untick anything that looks off.',
     'h2.alsoCompare': 'Also compare',
+    'sets.equipped': 'equipped', 'sets.owned': 'owned',
+    'sets.anyTitle': 'No set bonus protected — every suggestion is shown, even ones that break it',
+    'sets.hideBelowTitle': 'Hide suggestions that would drop below the {n}-piece bonus',
+    'sets.any': 'Any', 'sets.setN': '{n} set',
+    'loadout.active': 'Active — the baseline', 'loadout.simThis': 'sim this',
+    'loadout.couldNotRead': 'Could not read this build:', 'loadout.unknown': 'unknown',
+    'loadout.remove': 'Remove', 'loadout.added': '(added)',
+    'loadout.addBuild': 'Add a build', 'loadout.pasteHint': 'Paste a talent string (in-game export, Wowhead, Archon…)',
+    'loadout.namePlaceholder': 'Name (optional)', 'loadout.stringPlaceholder': 'Paste the talent string here',
+    'loadout.addBuildBtn': 'Add build',
+    'loadout.invalidString': 'That does not look like a talent string — copy the whole thing.',
+    'loadout.noSaved': 'No saved loadouts in this export — save one in game and re-copy /simc.',
+    'loadout.cantDraw': "Builds still sim — they just can't be drawn.",
+    'loadout.hero': 'hero',
     'h2.lootSources': 'Loot sources', 'dropt.includeAll': 'Include everything',
     'dropt.refresh': 'Refresh data', 'dropt.refreshTitle': 'Re-download game data from wago.tools (updates with game patches)',
     'dropt.upgradeItems': 'Upgrade items to',
@@ -192,6 +206,20 @@ const I18N = {
     'gear.voidcores': '+ Núcleos del Vacío (armas y abalorios)',
     'gear.trackUpgradesHint': 'Cada objeto se simula solo (más una fila "todos juntos"). Los niveles de objeto vienen de tu export; el camino se adivina por el nivel — desmarca lo que parezca incorrecto.',
     'h2.alsoCompare': 'También comparar',
+    'sets.equipped': 'equipado', 'sets.owned': 'en propiedad',
+    'sets.anyTitle': 'Ninguna bonificación de conjunto protegida — se muestra cualquier sugerencia, aunque la rompa',
+    'sets.hideBelowTitle': 'Oculta sugerencias que bajen de la bonificación de {n} piezas',
+    'sets.any': 'Cualquiera', 'sets.setN': '{n} piezas',
+    'loadout.active': 'Activa — la base', 'loadout.simThis': 'simular esta',
+    'loadout.couldNotRead': 'No se pudo leer esta build:', 'loadout.unknown': 'desconocido',
+    'loadout.remove': 'Quitar', 'loadout.added': '(añadida)',
+    'loadout.addBuild': 'Añadir una build', 'loadout.pasteHint': 'Pega una cadena de talentos (export del juego, Wowhead, Archon…)',
+    'loadout.namePlaceholder': 'Nombre (opcional)', 'loadout.stringPlaceholder': 'Pega aquí la cadena de talentos',
+    'loadout.addBuildBtn': 'Añadir build',
+    'loadout.invalidString': 'Eso no parece una cadena de talentos — copia el texto completo.',
+    'loadout.noSaved': 'No hay builds guardadas en este export — guarda una en el juego y vuelve a copiar /simc.',
+    'loadout.cantDraw': 'Las builds se simulan igual — solo no se pueden dibujar.',
+    'loadout.hero': 'heroica',
     'h2.lootSources': 'Fuentes de botín', 'dropt.includeAll': 'Incluir todo',
     'dropt.refresh': 'Actualizar datos', 'dropt.refreshTitle': 'Vuelve a descargar los datos del juego desde wago.tools (se actualiza con los parches)',
     'dropt.upgradeItems': 'Mejorar objetos a',
@@ -476,10 +504,10 @@ function renderLoadoutOptions(talents) {
   if (!talents?.available) {
     // no trait tables (binary-only simc) — fall back to a plain list
     const list = (talents?.loadouts ?? []).filter((l) => !l.isActive);
-    el.innerHTML = (talents?.reason ? `<p class="hint">${esc(talents.reason)} Builds still sim — they just can't be drawn.</p>` : '')
+    el.innerHTML = (talents?.reason ? `<p class="hint">${esc(talents.reason)} ${tr('loadout.cantDraw')}</p>` : '')
       + (list.length
         ? list.map((l) => `<label class="cg-opt"><input type="checkbox" data-cgroup="talents" data-cat="loadouts" data-key="${esc(l.name)}" ${(prev.get(l.name) ?? true) ? 'checked' : ''}> ${esc(prettyLoadout(l.name))}</label>`).join('')
-        : '<p class="hint">No saved loadouts in this export — save one in game and re-copy /simc.</p>');
+        : `<p class="hint">${tr('loadout.noSaved')}</p>`);
     bindLoadoutInputs(el);
     return;
   }
@@ -491,30 +519,30 @@ function renderLoadoutOptions(talents) {
   const card = (l) => {
     const lit = new Set(l.selectedNodes ?? []);
     const head = l.isActive
-      ? '<span class="tl-active">Active — the baseline</span>'
-      : `<label class="tl-pick"><input type="checkbox" data-cgroup="talents" data-cat="loadouts" data-key="${esc(l.name)}" ${(prev.get(l.name) ?? true) ? 'checked' : ''}> sim this</label>`;
+      ? `<span class="tl-active">${tr('loadout.active')}</span>`
+      : `<label class="tl-pick"><input type="checkbox" data-cgroup="talents" data-cat="loadouts" data-key="${esc(l.name)}" ${(prev.get(l.name) ?? true) ? 'checked' : ''}> ${tr('loadout.simThis')}</label>`;
     if (!l.valid) {
       return `<div class="talent-card invalid">
         <div class="tl-name">${esc(prettyLoadout(l.name))}</div>
-        <p class="hint">Could not read this build: ${esc(l.error ?? 'unknown')}</p>
-        ${l.custom ? `<button class="mini tl-del" data-del="${esc(l.name)}">Remove</button>` : ''}</div>`;
+        <p class="hint">${tr('loadout.couldNotRead')} ${esc(l.error ?? tr('loadout.unknown'))}</p>
+        ${l.custom ? `<button class="mini tl-del" data-del="${esc(l.name)}">${tr('loadout.remove')}</button>` : ''}</div>`;
     }
     return `<div class="talent-card">
-      <div class="tl-name">${esc(prettyLoadout(l.name))}${l.custom ? ' <span class="hint-inline">(added)</span>' : ''}</div>
+      <div class="tl-name">${esc(prettyLoadout(l.name))}${l.custom ? ` <span class="hint-inline">${tr('loadout.added')}</span>` : ''}</div>
       <div class="tl-trees">${talentTreeSvg(classNodes, lit)}${talentTreeSvg(specNodes, lit)}</div>
-      <div class="tl-meta">${l.heroName ? `<strong>${esc(l.heroName)}</strong> · ` : ''}${l.counts.class}/${l.counts.spec} + ${l.counts.hero} hero</div>
-      <div class="tl-foot">${head}${l.custom ? `<button class="mini tl-del" data-del="${esc(l.name)}">Remove</button>` : ''}</div>
+      <div class="tl-meta">${l.heroName ? `<strong>${esc(l.heroName)}</strong> · ` : ''}${l.counts.class}/${l.counts.spec} + ${l.counts.hero} ${tr('loadout.hero')}</div>
+      <div class="tl-foot">${head}${l.custom ? `<button class="mini tl-del" data-del="${esc(l.name)}">${tr('loadout.remove')}</button>` : ''}</div>
     </div>`;
   };
 
   el.innerHTML = `<div class="talent-cards">
       ${talents.loadouts.map(card).join('')}
       <div class="talent-card add-card">
-        <div class="tl-name">Add a build</div>
-        <p class="hint">Paste a talent string (in-game export, Wowhead, Archon…)</p>
-        <input type="text" id="tl-new-name" placeholder="Name (optional)">
-        <textarea id="tl-new-str" rows="2" placeholder="Paste the talent string here"></textarea>
-        <button class="mini" id="tl-add">Add build</button>
+        <div class="tl-name">${tr('loadout.addBuild')}</div>
+        <p class="hint">${tr('loadout.pasteHint')}</p>
+        <input type="text" id="tl-new-name" placeholder="${esc(tr('loadout.namePlaceholder'))}">
+        <textarea id="tl-new-str" rows="2" placeholder="${esc(tr('loadout.stringPlaceholder'))}"></textarea>
+        <button class="mini" id="tl-add">${tr('loadout.addBuildBtn')}</button>
         <p class="hint hidden" id="tl-add-error"></p>
       </div>
     </div>`;
@@ -524,7 +552,7 @@ function renderLoadoutOptions(talents) {
     const str = $('tl-new-str').value.trim();
     const err = $('tl-add-error');
     if (!/^[A-Za-z0-9+/]+$/.test(str)) {
-      err.textContent = 'That does not look like a talent string — copy the whole thing.';
+      err.textContent = tr('loadout.invalidString');
       err.classList.remove('hidden');
       return;
     }
@@ -1796,10 +1824,10 @@ function renderItemSets() {
     const def = s.equipped >= 4 ? 4 : s.equipped >= 2 ? 2 : 0;
     setMinimums[s.setId] = def;
     return `<div class="dropt-row">
-      <span class="src-name">${esc(s.name)} <span class="hint-inline">${s.equipped} equipped · ${s.owned} owned</span></span>
+      <span class="src-name">${esc(s.name)} <span class="hint-inline">${s.equipped} ${tr('sets.equipped')} · ${s.owned} ${tr('sets.owned')}</span></span>
       <span class="diff-boxes">${thresholds.map((t) => `
         <button class="mini setmin ${t === def ? 'active' : ''}" data-set="${s.setId}" data-min="${t}"
-          title="${t === 0 ? 'No set bonus protected — every suggestion is shown, even ones that break it' : `Hide suggestions that would drop below the ${t}-piece bonus`}">${t === 0 ? 'Any' : `${t} set`}</button>`).join('')}
+          title="${t === 0 ? tr('sets.anyTitle') : tr('sets.hideBelowTitle').replace('{n}', t)}">${t === 0 ? tr('sets.any') : tr('sets.setN').replace('{n}', t)}</button>`).join('')}
       </span></div>`;
   }).join('');
   document.querySelectorAll('#itemsets-list .setmin').forEach((btn) => {
