@@ -5,6 +5,7 @@ let eventSource = null;
 let mode = 'quick';
 let gearItems = []; // last parsed bag/vault items, indexes match checkboxes
 let catalystSlots = null; // slot -> {id, name}, this class's real tier piece (from /api/gear)
+let searchItems = []; // items added via "Item search" — { name, id, ilvl, targetIlvl, slot, section: 'Search', line }
 let equippedEnchGemBySlot = {}; // slot -> {enchantId, gemIds}, what every candidate for that slot is actually simmed with
 let itemSets = []; // detected item sets from /api/gear
 let setMinimums = {}; // setId -> chosen minimum bonus (0/2/4)
@@ -778,6 +779,64 @@ $('gear-all').addEventListener('click', () => setAllGear(true));
 $('gear-none').addEventListener('click', () => setAllGear(false));
 $('gear-max-upgrade').addEventListener('click', applyMaxAffordableUpgrades);
 $('gear-catalyst-toggle').addEventListener('change', refreshGearList);
+
+// ---------- Item search: add any item by name, at any item level ----------
+let searchDebounce = null;
+let searchSeq = 0; // guards against a slow older request overwriting a newer one's results
+$('item-search-input').addEventListener('input', () => {
+  const q = $('item-search-input').value.trim();
+  clearTimeout(searchDebounce);
+  if (q.length < 2) { $('item-search-results').classList.add('hidden'); return; }
+  searchDebounce = setTimeout(() => runItemSearch(q), 300);
+});
+
+async function runItemSearch(q) {
+  const seq = ++searchSeq;
+  let body;
+  try {
+    const resp = await fetch(`/api/item-search?patch=${encodeURIComponent(patch)}&lang=${encodeURIComponent(lang)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q, profile: $('profile').value }),
+    });
+    body = await resp.json();
+  } catch {
+    return;
+  }
+  if (seq !== searchSeq) return; // a newer search has since started
+  const results = $('item-search-results');
+  results.classList.remove('hidden');
+  if (!body.items?.length) {
+    results.innerHTML = '<p class="empty">No matching items.</p>';
+    return;
+  }
+  results.innerHTML = body.items.map((it) => `
+    <button type="button" class="search-result" data-search-add="${it.id}">
+      <span class="gear-icon-row">${itemTile(it.id, { name: it.name, slot: prettySlot(it.slot), quality: it.quality })}
+        <span>${esc(it.name)} <span class="hint-inline">(${esc(prettySlot(it.slot))})</span></span></span>
+    </button>`).join('')
+    + (body.truncated ? '<p class="hint">More matches than shown — narrow your search.</p>' : '');
+  paintItemIcons(results);
+  results.querySelectorAll('button.search-result').forEach((btn, idx) => {
+    btn.addEventListener('click', () => addSearchItem(body.items[idx]));
+  });
+}
+
+// Adds a found item to the gear list's own "Search" section, defaulting to
+// this season's top track step (its ilvl-select then offers every other
+// season step, or "custom…" for any number — see seasonLadder/ilvlControl).
+function addSearchItem(it) {
+  const ladder = seasonLadder();
+  const ilvl = ladder.at(-1)?.ilvl ?? season?.maxIlvl ?? 400;
+  searchItems.push({
+    _searchKey: `${it.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: it.name, id: it.id, ilvl, targetIlvl: null, slot: it.slot, section: 'Search',
+    line: `${it.slot}=,id=${it.id},ilevel=${ilvl}`,
+  });
+  $('item-search-input').value = '';
+  $('item-search-results').classList.add('hidden');
+  refreshGearList();
+}
 $('gear-slot-filter').addEventListener('click', (e) => {
   const chip = e.target.closest('button.chip');
   if (!chip) return;
@@ -936,6 +995,10 @@ async function refreshGearList() {
     if ($('gear-catalyst-toggle')?.checked) {
       gearItems = [...gearItems, ...catalystEntriesFor(gearItems)];
     }
+    // items added via "Item search" live outside the export entirely, so
+    // they're kept in their own array (searchItems) and merged back in here
+    // on every refresh, same appended-with-real-indices treatment as Catalyzed
+    gearItems = [...gearItems, ...searchItems];
     itemSets = body.itemSets ?? [];
     // every candidate is simmed with the enchant/gems already on that slot
     // (see droptimizer.js) rather than whatever the bag item itself carries,
@@ -983,11 +1046,20 @@ async function refreshGearList() {
             : {}),
         })}<span>${esc(item.name)}${trackTagFor(item) ? ` <span class="track-tag tier-${trackTagFor(item).toLowerCase()}">(${trackTagFor(item)})</span>` : ''}<button type="button" class="slot-tag" data-solo-slot="${esc(item.slot)}" title="Tick only ${esc(prettySlot(item.slot))} items">${esc(prettySlot(item.slot))}</button></span></span>
         ${ilvlControl(item, i)}
+        ${item.section === 'Search'
+          ? `<button type="button" class="search-remove" data-search-key="${esc(item._searchKey)}" title="Remove from the list">✕</button>` : ''}
       </label>`).join('')}
   `).join('');
   paintItemIcons($('gear-list'));
   document.querySelectorAll('#gear-list input[type="checkbox"]').forEach((cb) => {
     cb.addEventListener('change', updateGearCount);
+  });
+  document.querySelectorAll('#gear-list button.search-remove').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      searchItems = searchItems.filter((it) => it._searchKey !== btn.dataset.searchKey);
+      refreshGearList();
+    });
   });
   document.querySelectorAll('#gear-list button.slot-tag').forEach((btn) => {
     btn.addEventListener('click', (e) => {
@@ -1442,7 +1514,30 @@ function renderItemSets() {
   });
 }
 
+// Every step of every upgrade track this season, deduped by item level and
+// sorted — the same ladder Raidbots' Item Search offers ("Only Seasonal Item
+// Levels"): a searched item has no track of its own to read steps from, so
+// instead of guessing one, every level anyone could actually be simming at
+// this season is on offer, plus a free "custom…" entry for anything else.
+function seasonLadder() {
+  if (!season?.tracks) return [];
+  const labelByIlvl = new Map();
+  for (const [track, ilvls] of Object.entries(season.tracks)) {
+    ilvls.forEach((ilvl, idx) => {
+      if (!labelByIlvl.has(ilvl)) labelByIlvl.set(ilvl, `${ilvl} — ${track} ${idx + 1}/${ilvls.length}`);
+    });
+  }
+  return [...labelByIlvl.entries()].map(([ilvl, label]) => ({ ilvl, label })).sort((a, b) => a.ilvl - b.ilvl);
+}
+
 function ilvlControl(item, i) {
+  if (item.section === 'Search') {
+    const ladder = seasonLadder();
+    return `<select class="ilvl-select" data-gear-index="${i}" title="Any of this season's upgrade-track item levels, or custom for any number">
+      ${ladder.map((o) => `<option value="${o.ilvl}"${o.ilvl === item.ilvl ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}
+      <option value="custom">custom…</option>
+    </select>`;
+  }
   const opts = upgradeOptionsFor(item);
   if (!opts.length) {
     // no known upgrades (or no parsed ilvl) — still allow custom editing
