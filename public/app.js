@@ -4,6 +4,9 @@ let currentJobId = null;
 let eventSource = null;
 let mode = 'quick';
 let gearItems = []; // last parsed bag/vault items, indexes match checkboxes
+let catalystSlots = null; // slot -> {id, name}, this class's real tier piece (from /api/gear)
+let searchItems = []; // items added via "Item search" — { name, id, ilvl, targetIlvl, slot, section: 'Search', line }
+let equippedEnchGemBySlot = {}; // slot -> {enchantId, gemIds}, what every candidate for that slot is actually simmed with
 let itemSets = []; // detected item sets from /api/gear
 let setMinimums = {}; // setId -> chosen minimum bonus (0/2/4)
 let season = null; // upgrade tracks + voidcore info from the patch's season config
@@ -12,9 +15,284 @@ let season = null; // upgrade tracks + voidcore info from the patch's season con
 let patch = localStorage.getItem('localbots-patch') ?? 'live';
 let patchDefs = [];
 
+// ---------- language switch (item/set/loot names) ----------
+// English is always cached; Spanish is downloaded the first time it's
+// selected and "Refresh data" is hit, same as a brand-new patch — see
+// server/index.js's getPatch(). This never changes the sim math, only which
+// language item/set/instance names come back in.
+const LANGS = [{ id: 'en', label: 'EN' }, { id: 'es', label: 'ES' }];
+let lang = localStorage.getItem('localbots-lang') ?? 'en';
+
+// ---------- UI text translation (separate from the item/set/loot game-data
+// text above, which comes from wago.tools per patch) ----------
+// Every static label/hint/button/header in the app, keyed by a stable id.
+// `tr(key)` looks it up for the current language; `applyI18n()` walks the DOM
+// once (and again on every language switch) filling in textContent for
+// [data-i18n], the `title` attribute for [data-i18n-title], and `placeholder`
+// for [data-i18n-placeholder].
+const I18N = {
+  en: {
+    tagline: 'your hardware, your sims',
+    'nav.newSim': 'New sim', 'nav.history': 'History',
+    'quicknav.label': 'Quick Nav:', 'quicknav.character': 'Character', 'quicknav.fight': 'Fight',
+    'quicknav.buffs': 'Buffs', 'quicknav.consumables': 'Consumables', 'quicknav.gear': 'Gear',
+    'quicknav.loot': 'Loot sources',
+    'tab.quick': 'Quick Sim', 'tab.topgear': 'Top Gear', 'tab.droptimizer': 'Droptimizer', 'tab.statweights': 'Stat Weights',
+    'h2.character': 'Character',
+    'src.addon': 'SimC Addon', 'src.armory': 'Armory',
+    'src.addonHint': 'In game: type <code>/simc</code>, copy the text (Ctrl+C / Cmd+C), paste it below.',
+    'src.addonPlaceholder': "# Paste your /simc addon export here\nwarrior=\"Yourname\"\nlevel=90\nspec=fury\n...",
+    'src.armoryHint': 'Look the character up by name — no addon needed. Gear comes from the last public scan of the character, so anything swapped in the last few minutes may be missing; the addon export is always exact.',
+    'src.region': 'Region', 'src.realm': 'Realm', 'src.character': 'Character', 'src.import': 'Import',
+    'h2.fight': 'Fight',
+    'fight.style': 'Fight style',
+    'fight.style.patchwerk': 'Patchwerk (single target, raid boss)',
+    'fight.style.dungeonslice': 'DungeonSlice (M+ style packs)',
+    'fight.style.hectic': 'HecticAddCleave (heavy add cleave)',
+    'fight.style.dummy': 'Training dummy (stand still & pump)',
+    'fight.enemies': 'Enemies', 'fight.enemiesFixed': 'set by the fight style',
+    'fight.length': 'Fight length (seconds)',
+    'fight.precision': 'Precision',
+    'fight.precision.fast': 'Fast (target error 0.5%)',
+    'fight.precision.normal': 'Normal (target error 0.2%)',
+    'fight.precision.high': 'High (target error 0.1%)',
+    'fight.precision.extreme': 'Extreme (target error 0.05%, Raidbots Smart Sim grade)',
+    'fight.precision.fixed': 'Fixed iterations…',
+    'fight.iterations': 'Iterations',
+    'h2.buffs': 'Raid buffs', 'buffs.allOn': 'Everything on', 'buffs.allOff': 'Everything off',
+    'buff.bloodlust': 'Bloodlust / Heroism', 'buff.arcaneIntellect': 'Arcane Intellect',
+    'buff.battleShout': 'Battle Shout', 'buff.markOfTheWild': 'Mark of the Wild',
+    'buff.pwFortitude': 'PW: Fortitude', 'buff.mysticTouch': 'Mystic Touch',
+    'buff.chaosBrand': 'Chaos Brand', 'buff.skyfury': 'Skyfury', 'buff.huntersMark': "Hunter's Mark",
+    'h2.consumables': 'Consumables', 'consumable.flask': 'Flask', 'consumable.food': 'Food',
+    'consumable.potion': 'Potion', 'consumable.augmentation': 'Augment rune', 'consumable.weaponOil': 'Weapon oil',
+    'h2.filterSlot': 'Filter Sim by Slot',
+    'gear.filterHint': 'Click one or more slots to tick only their items below; click a highlighted slot again to drop it, or clear them all to show every slot.',
+    'h2.itemSearch': 'Item search',
+    'gear.searchHint': "Add any item by name at any item level — not limited to what's in your bags.",
+    'gear.searchPlaceholder': 'Search for an item…',
+    'h2.itemsToCompare': 'Items to compare',
+    'gear.itemsHint': 'Gear found in your bags (and vault choices) inside the export. Each ticked item is simmed in place of what you have equipped.',
+    'gear.all': 'All', 'gear.none': 'None',
+    'gear.maxUpgrade': 'Highest affordable upgrade',
+    'gear.maxUpgradeTitle': "Sets each item's sim level to the highest step its own track's crests can afford (20 crests per step), read from upgrade_currencies= in your export",
+    'gear.catalyst': 'Catalyze selected items',
+    'gear.catalystTitle': "Adds a 'Catalyzed' section below with the real tier piece each looted (non-crafted) item in a tier slot becomes when run through the Catalyst — tick the ones you want compared, same as any other item",
+    'h2.itemSets': 'Item sets',
+    'gear.setsHint': 'Minimum set bonus to keep — suggestions that would break it are hidden.',
+    'gear.trackUpgrades': 'Track upgrades (equipped gear)', 'gear.trackUpgradesSub': 'what is each upgrade worth?',
+    'gear.upgradeTo': 'Upgrade to',
+    'track.step2': '2/6 of its track', 'track.step3': '3/6 of its track', 'track.step4': '4/6 of its track',
+    'track.step5': '5/6 of its track', 'track.step6': '6/6 — fully upgraded',
+    'gear.voidcores': '+ Voidcores (weapons & trinkets)',
+    'gear.trackUpgradesHint': 'Each item sims alone (plus one "all together" row). Item levels come from your export; the track is guessed from the level — untick anything that looks off.',
+    'h2.alsoCompare': 'Also compare',
+    'h2.lootSources': 'Loot sources', 'dropt.includeAll': 'Include everything',
+    'dropt.refresh': 'Refresh data', 'dropt.refreshTitle': 'Re-download game data from wago.tools (updates with game patches)',
+    'dropt.upgradeItems': 'Upgrade items to',
+    'dropt.upgradeItemsTitle': 'Sim every item upgraded within its own track (e.g. a Mythic raid drop at Myth 4/6). World boss / outdoor items are unaffected.',
+    'dropt.asDropped': 'As dropped (no upgrades)',
+    'dropt.voidcoreTitle': 'Ascendant Voidcores: only fully upgraded (6/6) Hero and Myth track weapons and trinkets — Hero → 285, Myth → 298',
+    'dropt.applyVoidcores': 'Apply Voidcores (whenever possible)',
+    'dropt.tierTitle': "An item put into a tier slot would break your set bonus and read as a big loss. With this on, those rows keep the bonus — the Catalyst turns a drop into your tier piece while keeping its own stats, sockets and effects — so the row shows the stat difference on its own.",
+    'dropt.keepTier': 'Keep my tier set bonus (as if catalysed)',
+    'dropt.offspecTitle': "Also sim items whose primary stat isn't yours (e.g. Intellect pieces on an Agility spec) — armor type and weapon proficiency are still enforced",
+    'dropt.offspec': 'Include off-spec items',
+    'dropt.scanHint': 'Full scans sim hundreds of items — the Fast precision preset is recommended; expect several minutes.',
+    'sim.button': 'Sim it', 'sim.cancel': 'Cancel',
+    'sim.compareGear': 'Compare gear', 'sim.runDroptimizer': 'Run droptimizer', 'sim.calcStatWeights': 'Calc stat weights',
+    'lang.enTitle': 'Item, set and loot names in English (always available)',
+    'lang.esTitle': 'Item, set and loot names in Spanish -- the first time you pick this, hit “Refresh data” to download it',
+    'slot.head': 'head', 'slot.neck': 'neck', 'slot.shoulder': 'shoulder', 'slot.back': 'back', 'slot.chest': 'chest',
+    'slot.wrist': 'wrist', 'slot.hands': 'hands', 'slot.waist': 'waist', 'slot.legs': 'legs', 'slot.feet': 'feet',
+    'slot.finger1': 'finger 1', 'slot.finger2': 'finger 2', 'slot.trinket1': 'trinket 1', 'slot.trinket2': 'trinket 2',
+    'slot.mainHand': 'main hand', 'slot.offHand': 'off hand', 'slot.weapons': 'weapons',
+    'filter.all': 'All', 'filter.allSlots': 'All slots', 'filter.consumables': 'Consumables', 'filter.enchants': 'Enchants',
+    'filter.gems': 'Gems', 'filter.omniumFolio': 'Omnium Folio', 'filter.talentLoadouts': 'Talent loadouts',
+    'filter.loadout': 'Loadout', 'filter.rings': 'Rings', 'filter.trinkets': 'Trinkets', 'filter.weapon': 'Weapon',
+    'filter.upgrades': 'Upgrades', 'filter.equipped': 'Equipped', 'filter.bags': 'Bags', 'filter.catalyzed': 'Catalyzed',
+    'filter.search': 'Search', 'filter.row': 'Row', 'bucket.talentBuild': 'Talent build', 'bucket.enchant': 'Enchant',
+    'h2.simHistory': 'Sim history',
+    'history.hint': 'Every finished sim is saved here automatically. Click one to view its results again on the right.',
+    'results.backToSetup': '← Back to setup',
+    'progress.simulating': 'Simulating…',
+    'results.baselineDps': 'baseline DPS (equipped gear)', 'results.filterItems': 'Filter items…',
+    'results.yourTopGear': 'Your Top Gear', 'results.bestSetup': 'Best setup',
+    'results.highlightedHint': 'Highlighted slots beat what you have equipped — enchant & gems shown for the rest carry over to every candidate in that slot in Details.',
+    'th.item': 'Item', 'th.source': 'Source', 'th.dps': 'DPS', 'th.change': 'Change', 'th.vsEquipped': 'vs equipped',
+    'h2.statWeights': 'Stat weights', 'th.stat': 'Stat', 'th.dpsPerPoint': 'DPS per point', 'th.relativeToTop': 'Relative to top stat',
+    'h2.damageBreakdown': 'Damage breakdown', 'th.ability': 'Ability', 'th.casts': 'Casts', 'th.share': 'Share',
+    'h2.buffUptimes': 'Buff uptimes', 'th.buff': 'Buff', 'th.uptime': 'Uptime',
+    'empty.hit': 'Paste your character, pick a fight, hit <strong data-i18n="sim.button">Sim it</strong>.',
+    'empty.resultsHint': 'Results appear here with DPS, damage breakdown, and buff uptimes.',
+    'footer.runsLocally': 'Localbots runs entirely on this machine', 'footer.github': 'Localbots on GitHub',
+    'footer.saveReport': 'Save report',
+    'footer.saveReportTitle': 'Save this result as one HTML file you can send to someone — it opens in any browser',
+    'footer.shutdown': 'Shut down server',
+    'status.appOk': 'Localbots up to date', 'status.appOutdated': 'Localbots update available',
+    'status.appUnknown': 'Localbots — can’t check',
+    'status.simcOk': 'Simc up to date', 'status.simcOutdatedClick': 'Simc outdated — click to update',
+    'status.simcOutdated': 'Simc outdated', 'status.simcUnknown': 'Simc — can’t check',
+    'status.simcUpdateFailed': 'Simc update failed', 'status.simcUpdating': 'Simc updating…',
+    'status.simcStillOutdated': 'Simc still outdated',
+  },
+  es: {
+    tagline: 'tu hardware, tus simulaciones',
+    'nav.newSim': 'Nueva sim', 'nav.history': 'Historial',
+    'quicknav.label': 'Navegación rápida:', 'quicknav.character': 'Personaje', 'quicknav.fight': 'Combate',
+    'quicknav.buffs': 'Mejoras', 'quicknav.consumables': 'Consumibles', 'quicknav.gear': 'Equipo',
+    'quicknav.loot': 'Fuentes de botín',
+    'tab.quick': 'Sim rápida', 'tab.topgear': 'Mejor equipo', 'tab.droptimizer': 'Droptimizer', 'tab.statweights': 'Peso de stats',
+    'h2.character': 'Personaje',
+    'src.addon': 'Addon SimC', 'src.armory': 'Armería',
+    'src.addonHint': 'En el juego: escribe <code>/simc</code>, copia el texto (Ctrl+C / Cmd+C) y pégalo abajo.',
+    'src.addonPlaceholder': "# Pega aquí tu export del addon /simc\nwarrior=\"Tunombre\"\nlevel=90\nspec=fury\n...",
+    'src.armoryHint': 'Busca el personaje por nombre — no hace falta el addon. El equipo viene del último escaneo público del personaje, así que algo cambiado en los últimos minutos puede faltar; el export del addon siempre es exacto.',
+    'src.region': 'Región', 'src.realm': 'Reino', 'src.character': 'Personaje', 'src.import': 'Importar',
+    'h2.fight': 'Combate',
+    'fight.style': 'Estilo de combate',
+    'fight.style.patchwerk': 'Patchwerk (un objetivo, jefe de banda)',
+    'fight.style.dungeonslice': 'DungeonSlice (estilo M+ con grupos)',
+    'fight.style.hectic': 'HecticAddCleave (oleadas intensas de secuaces)',
+    'fight.style.dummy': 'Muñeco de entrenamiento (quieto y a pegar)',
+    'fight.enemies': 'Enemigos', 'fight.enemiesFixed': 'fijado por el estilo de combate',
+    'fight.length': 'Duración del combate (segundos)',
+    'fight.precision': 'Precisión',
+    'fight.precision.fast': 'Rápida (error objetivo 0.5%)',
+    'fight.precision.normal': 'Normal (error objetivo 0.2%)',
+    'fight.precision.high': 'Alta (error objetivo 0.1%)',
+    'fight.precision.extreme': 'Extrema (error objetivo 0.05%, nivel Smart Sim de Raidbots)',
+    'fight.precision.fixed': 'Iteraciones fijas…',
+    'fight.iterations': 'Iteraciones',
+    'h2.buffs': 'Mejoras de banda', 'buffs.allOn': 'Todo activado', 'buffs.allOff': 'Todo desactivado',
+    'buff.bloodlust': 'Ansia de sangre / Heroísmo', 'buff.arcaneIntellect': 'Intelecto arcano',
+    'buff.battleShout': 'Grito de guerra', 'buff.markOfTheWild': 'Marca de la salvaje',
+    'buff.pwFortitude': 'PS: Fortaleza', 'buff.mysticTouch': 'Toque místico',
+    'buff.chaosBrand': 'Marca del caos', 'buff.skyfury': 'Furia celeste', 'buff.huntersMark': 'Marca de caza',
+    'h2.consumables': 'Consumibles', 'consumable.flask': 'Frasco', 'consumable.food': 'Comida',
+    'consumable.potion': 'Poción', 'consumable.augmentation': 'Runa de aumento', 'consumable.weaponOil': 'Aceite de arma',
+    'h2.filterSlot': 'Filtrar sim por ranura',
+    'gear.filterHint': 'Haz clic en una o varias ranuras para marcar solo sus objetos abajo; haz clic de nuevo en una ranura resaltada para quitarla, o límpialas todas para mostrar todas las ranuras.',
+    'h2.itemSearch': 'Buscar objeto',
+    'gear.searchHint': 'Añade cualquier objeto por nombre a cualquier nivel de objeto — no limitado a lo que llevas en las bolsas.',
+    'gear.searchPlaceholder': 'Buscar un objeto…',
+    'h2.itemsToCompare': 'Objetos a comparar',
+    'gear.itemsHint': 'Equipo encontrado en tus bolsas (y elecciones de la bóveda) dentro del export. Cada objeto marcado se simula en lugar de lo que llevas equipado.',
+    'gear.all': 'Todos', 'gear.none': 'Ninguno',
+    'gear.maxUpgrade': 'Mayor mejora asequible',
+    'gear.maxUpgradeTitle': 'Fija el nivel de sim de cada objeto al mayor paso que sus cristas puedan pagar (20 cristas por paso), leído de upgrade_currencies= en tu export',
+    'gear.catalyst': 'Catalizar objetos seleccionados',
+    'gear.catalystTitle': "Añade una sección 'Catalizado' abajo con la pieza real de conjunto en la que se convierte cada objeto looteado (no crafteado) de una ranura de conjunto al pasar por el Catalizador — marca los que quieras comparar, igual que cualquier otro objeto",
+    'h2.itemSets': 'Conjuntos de objetos',
+    'gear.setsHint': 'Bonificación mínima de conjunto a mantener — las sugerencias que la romperían se ocultan.',
+    'gear.trackUpgrades': 'Mejoras de camino (equipo actual)', 'gear.trackUpgradesSub': '¿cuánto vale cada mejora?',
+    'gear.upgradeTo': 'Mejorar a',
+    'track.step2': '2/6 de su camino', 'track.step3': '3/6 de su camino', 'track.step4': '4/6 de su camino',
+    'track.step5': '5/6 de su camino', 'track.step6': '6/6 — totalmente mejorado',
+    'gear.voidcores': '+ Núcleos del Vacío (armas y abalorios)',
+    'gear.trackUpgradesHint': 'Cada objeto se simula solo (más una fila "todos juntos"). Los niveles de objeto vienen de tu export; el camino se adivina por el nivel — desmarca lo que parezca incorrecto.',
+    'h2.alsoCompare': 'También comparar',
+    'h2.lootSources': 'Fuentes de botín', 'dropt.includeAll': 'Incluir todo',
+    'dropt.refresh': 'Actualizar datos', 'dropt.refreshTitle': 'Vuelve a descargar los datos del juego desde wago.tools (se actualiza con los parches)',
+    'dropt.upgradeItems': 'Mejorar objetos a',
+    'dropt.upgradeItemsTitle': 'Simula cada objeto mejorado dentro de su propio camino (p. ej. un drop de banda Mítica a Mítico 4/6). Los objetos de jefe mundial / exteriores no se ven afectados.',
+    'dropt.asDropped': 'Tal como cae (sin mejoras)',
+    'dropt.voidcoreTitle': 'Núcleos del Vacío Ascendentes: solo armas y abalorios de camino Héroe y Mítico totalmente mejorados (6/6) — Héroe → 285, Mítico → 298',
+    'dropt.applyVoidcores': 'Aplicar Núcleos del Vacío (cuando sea posible)',
+    'dropt.tierTitle': 'Un objeto puesto en una ranura de conjunto rompería tu bonificación de conjunto y se leería como una gran pérdida. Con esto activado, esas filas mantienen la bonificación — el Catalizador convierte un drop en tu pieza de conjunto manteniendo sus propias estadísticas, engarces y efectos — así que la fila muestra la diferencia de estadísticas por sí sola.',
+    'dropt.keepTier': 'Mantener mi bonificación de conjunto (como si catalizado)',
+    'dropt.offspecTitle': 'Simula también objetos cuya estadística principal no es la tuya (p. ej. piezas de Intelecto en una especialización de Agilidad) — el tipo de armadura y la competencia con el arma se siguen respetando',
+    'dropt.offspec': 'Incluir objetos fuera de especialización',
+    'dropt.scanHint': 'Los escaneos completos simulan cientos de objetos — se recomienda la precisión Rápida; espera varios minutos.',
+    'sim.button': 'Simular', 'sim.cancel': 'Cancelar',
+    'sim.compareGear': 'Comparar equipo', 'sim.runDroptimizer': 'Ejecutar droptimizer', 'sim.calcStatWeights': 'Calcular pesos',
+    'lang.enTitle': 'Nombres de objetos, conjuntos y botín en inglés (siempre disponible)',
+    'lang.esTitle': 'Nombres de objetos, conjuntos y botín en español -- la primera vez que elijas esto, pulsa "Actualizar datos" para descargarlo',
+    'slot.head': 'cabeza', 'slot.neck': 'cuello', 'slot.shoulder': 'hombros', 'slot.back': 'espalda', 'slot.chest': 'pecho',
+    'slot.wrist': 'muñeca', 'slot.hands': 'manos', 'slot.waist': 'cintura', 'slot.legs': 'piernas', 'slot.feet': 'pies',
+    'slot.finger1': 'anillo 1', 'slot.finger2': 'anillo 2', 'slot.trinket1': 'abalorio 1', 'slot.trinket2': 'abalorio 2',
+    'slot.mainHand': 'mano principal', 'slot.offHand': 'mano secundaria', 'slot.weapons': 'armas',
+    'filter.all': 'Todos', 'filter.allSlots': 'Todas las ranuras', 'filter.consumables': 'Consumibles', 'filter.enchants': 'Encantamientos',
+    'filter.gems': 'Gemas', 'filter.omniumFolio': 'Folio Omnium', 'filter.talentLoadouts': 'Configuraciones de talentos',
+    'filter.loadout': 'Configuración', 'filter.rings': 'Anillos', 'filter.trinkets': 'Abalorios', 'filter.weapon': 'Arma',
+    'filter.upgrades': 'Mejoras', 'filter.equipped': 'Equipado', 'filter.bags': 'Bolsas', 'filter.catalyzed': 'Catalizado',
+    'filter.search': 'Búsqueda', 'filter.row': 'Fila', 'bucket.talentBuild': 'Configuración de talentos', 'bucket.enchant': 'Encantamiento',
+    'h2.simHistory': 'Historial de sims',
+    'history.hint': 'Cada sim terminada se guarda aquí automáticamente. Haz clic en una para ver sus resultados de nuevo a la derecha.',
+    'results.backToSetup': '← Volver a la configuración',
+    'progress.simulating': 'Simulando…',
+    'results.baselineDps': 'DPS base (equipo equipado)', 'results.filterItems': 'Filtrar objetos…',
+    'results.yourTopGear': 'Tu mejor equipo', 'results.bestSetup': 'Mejor combinación',
+    'results.highlightedHint': 'Las ranuras resaltadas superan lo que llevas equipado — el encantamiento y las gemas mostrados para el resto se aplican a todos los candidatos de esa ranura en Detalles.',
+    'th.item': 'Objeto', 'th.source': 'Origen', 'th.dps': 'DPS', 'th.change': 'Cambio', 'th.vsEquipped': 'vs equipado',
+    'h2.statWeights': 'Peso de estadísticas', 'th.stat': 'Estadística', 'th.dpsPerPoint': 'DPS por punto', 'th.relativeToTop': 'Relativo a la mejor',
+    'h2.damageBreakdown': 'Desglose de daño', 'th.ability': 'Habilidad', 'th.casts': 'Usos', 'th.share': 'Porcentaje',
+    'h2.buffUptimes': 'Tiempo activo de mejoras', 'th.buff': 'Mejora', 'th.uptime': 'Tiempo activo',
+    'empty.hit': 'Pega tu personaje, elige un combate, pulsa <strong data-i18n="sim.button">Simular</strong>.',
+    'empty.resultsHint': 'Los resultados aparecerán aquí con DPS, desglose de daño y tiempo activo de mejoras.',
+    'footer.runsLocally': 'Localbots corre enteramente en esta máquina', 'footer.github': 'Localbots en GitHub',
+    'footer.saveReport': 'Guardar informe',
+    'footer.saveReportTitle': 'Guarda este resultado como un archivo HTML que puedes enviar a alguien — se abre en cualquier navegador',
+    'footer.shutdown': 'Apagar servidor',
+    'status.appOk': 'Localbots actualizado', 'status.appOutdated': 'Actualización de Localbots disponible',
+    'status.appUnknown': 'Localbots — no se puede comprobar',
+    'status.simcOk': 'Simc actualizado', 'status.simcOutdatedClick': 'Simc desactualizado — clic para actualizar',
+    'status.simcOutdated': 'Simc desactualizado', 'status.simcUnknown': 'Simc — no se puede comprobar',
+    'status.simcUpdateFailed': 'Falló la actualización de Simc', 'status.simcUpdating': 'Actualizando Simc…',
+    'status.simcStillOutdated': 'Simc sigue desactualizado',
+  },
+};
+
+function tr(key) { return I18N[lang]?.[key] ?? I18N.en[key] ?? key; }
+
+function applyI18n(root = document) {
+  document.documentElement.lang = lang;
+  root.querySelectorAll('[data-i18n]').forEach((el) => {
+    const key = el.dataset.i18n;
+    // an element with element children (e.g. the empty-state's <strong>) needs
+    // its markup preserved, not just its text -- those store real HTML
+    if (el.children.length) el.innerHTML = tr(key);
+    else el.textContent = tr(key);
+  });
+  root.querySelectorAll('[data-i18n-title]').forEach((el) => { el.title = tr(el.dataset.i18nTitle); });
+  root.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { el.placeholder = tr(el.dataset.i18nPlaceholder); });
+}
+applyI18n();
+
+function renderLangSwitch() {
+  const el = $('lang-switch');
+  if (!el) return;
+  el.innerHTML = LANGS.map((l) => `
+    <button class="lang-btn ${l.id === lang ? 'active' : ''}" data-langid="${esc(l.id)}"
+      title="${l.id === 'en'
+        ? esc(tr('lang.enTitle'))
+        : esc(tr('lang.esTitle'))}">${esc(l.label)}</button>`).join('');
+  el.querySelectorAll('.lang-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.langid === lang) return;
+      lang = btn.dataset.langid;
+      localStorage.setItem('localbots-lang', lang);
+      renderLangSwitch();
+      applyI18n(); // whole interface, not just item/set/loot game-data text
+      $('sim-button').textContent = simLabel(mode);
+      // language-specific state is stale now, same as a patch switch
+      enchantNameCache.clear();
+      equippedItems = null;
+      delete $('tu-list').dataset.rendered;
+      droptTree = null;
+      await reloadSeason();
+      if (mode === 'topgear') {
+        refreshGearList();
+        if ($('track-upgrades-toggle').checked) loadEquippedItems();
+      }
+      if (mode === 'droptimizer') refreshDroptimizer();
+    });
+  });
+}
+
 async function reloadSeason() {
   try {
-    season = await (await fetch(`/api/season?patch=${encodeURIComponent(patch)}`)).json();
+    season = await (await fetch(`/api/season?patch=${encodeURIComponent(patch)}&lang=${encodeURIComponent(lang)}`)).json();
     renderCompareGroups();
   } catch { /* unreachable server is reported by the status chips */ }
 }
@@ -28,6 +306,7 @@ async function initPatches() {
     patch = (patchDefs.find((d) => d.available) ?? patchDefs[0])?.id ?? 'live';
   }
   renderPatchSwitch();
+  renderLangSwitch();
   await reloadSeason();
 }
 initPatches();
@@ -311,6 +590,15 @@ const TRACK_SCHEME = [['Veteran', 'v'], ['Champion', 'c'], ['Hero', 'h'], ['Myth
 // The V/C/H/M scheme shown after an item's name, with its own track lit up and
 // the rest dimmed. Takes the decoded track; a row without one (crafted gear,
 // last season's) shows nothing rather than a guess.
+// A result row only carries the track name and the ilvl it landed on, not
+// the step index gear-list items get from the server -- but the season's
+// per-track ilvl list IS the step index, so a lookup is all that's needed.
+function trackStepFor(track, ilvl) {
+  const steps = season?.tracks?.[track];
+  const idx = steps ? steps.indexOf(Number(ilvl)) : -1;
+  return idx >= 0 ? { track, trackStep: idx + 1, trackMax: steps.length } : null;
+}
+
 function trackSchemeFor(track) {
   if (!track || !TRACK_SCHEME.some(([name]) => name === track)) return '';
   const letters = TRACK_SCHEME.map(([name, cls]) =>
@@ -449,9 +737,9 @@ fetch('/api/status')
   .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
   .then(renderStatus)
   .catch(() => {
-    setChip('status-app', 'unknown', 'Localbots — can’t check',
+    setChip('status-app', 'unknown', tr('status.appUnknown'),
       'Could not run the update check. If you just updated Localbots, restart the server.');
-    setChip('status-simc', 'unknown', 'Simc — can’t check',
+    setChip('status-simc', 'unknown', tr('status.simcUnknown'),
       'Could not run the update check. If you just updated Localbots, restart the server.');
   });
 
@@ -467,34 +755,34 @@ function renderStatus(s) {
   if (s.allowShutdown === false) $('shutdown-button').classList.add('hidden');
   const app = s.app ?? {};
   if (app.state === 'ok') {
-    setChip('status-app', 'ok', 'Localbots up to date',
+    setChip('status-app', 'ok', tr('status.appOk'),
       `You are on the latest version (${app.local}).`);
   } else if (app.state === 'outdated') {
-    setChip('status-app', 'outdated', 'Localbots update available',
+    setChip('status-app', 'outdated', tr('status.appOutdated'),
       'A newer version is on GitHub. To update: open a terminal in the localbots folder, ' +
       'run "git pull", then restart the server.');
   } else {
-    setChip('status-app', 'unknown', 'Localbots — can’t check',
+    setChip('status-app', 'unknown', tr('status.appUnknown'),
       `Could not reach GitHub to compare versions (${app.reason ?? 'no network?'}).`);
   }
   const simc = s.simc ?? {};
   simcChipClickable = false;
   if (simc.state === 'ok') {
-    setChip('status-simc', 'ok', 'Simc up to date',
+    setChip('status-simc', 'ok', tr('status.simcOk'),
       `${s.simcVersion ?? 'simc'} — matches the live game (${simc.liveGame}).`);
   } else if (simc.state === 'outdated') {
     if (simc.updatable) {
       simcChipClickable = true;
-      setChip('status-simc', 'outdated', 'Simc outdated — click to update',
+      setChip('status-simc', 'outdated', tr('status.simcOutdatedClick'),
         `The game updated to ${simc.liveGame}, but your simc is built for ${simc.simcGame}. ` +
         'Click to pull the latest simc and rebuild it right here (a minute or two; sims wait meanwhile).');
     } else {
-      setChip('status-simc', 'outdated', 'Simc outdated',
+      setChip('status-simc', 'outdated', tr('status.simcOutdated'),
         `The game updated to ${simc.liveGame}, but your simc is built for ${simc.simcGame}. ` +
         'Rebuild/redownload simc (see the README) to sim the latest patch.');
     }
   } else {
-    setChip('status-simc', 'unknown', 'Simc — can’t check',
+    setChip('status-simc', 'unknown', tr('status.simcUnknown'),
       `${s.simcVersion ?? 'simc'} — could not fetch the live game version (${simc.reason ?? 'no network?'}).`);
   }
   $('status-simc').classList.toggle('clickable', simcChipClickable);
@@ -514,16 +802,16 @@ $('status-simc').addEventListener('click', async () => {
     const resp = await fetch('/api/simc/update', { method: 'POST' });
     const body = await resp.json();
     if (!resp.ok) {
-      setChip('status-simc', 'outdated', 'Simc update failed', body.error ?? 'unknown error');
+      setChip('status-simc', 'outdated', tr('status.simcUpdateFailed'), body.error ?? 'unknown error');
       simcUpdating = false;
       return;
     }
   } catch {
-    setChip('status-simc', 'outdated', 'Simc update failed', 'Could not reach the server.');
+    setChip('status-simc', 'outdated', tr('status.simcUpdateFailed'), 'Could not reach the server.');
     simcUpdating = false;
     return;
   }
-  setChip('status-simc', 'unknown', 'Simc updating…', 'Pulling the latest simc source.');
+  setChip('status-simc', 'unknown', tr('status.simcUpdating'), 'Pulling the latest simc source.');
   pollSimcUpdate();
 });
 
@@ -537,13 +825,13 @@ async function pollSimcUpdate() {
   }
   if (st.running) {
     const pct = st.progress ? ` ${Math.round((st.progress.done / st.progress.total) * 100)}%` : '';
-    setChip('status-simc', 'unknown', `Simc updating…${pct}`, st.step ?? 'working');
+    setChip('status-simc', 'unknown', `${tr('status.simcUpdating')}${pct}`, st.step ?? 'working');
     setTimeout(pollSimcUpdate, 2000);
     return;
   }
   simcUpdating = false;
   if (st.error) {
-    setChip('status-simc', 'outdated', 'Simc update failed',
+    setChip('status-simc', 'outdated', tr('status.simcUpdateFailed'),
       `${st.error} — you can update manually instead (see the README).`);
     return;
   }
@@ -554,23 +842,46 @@ async function pollSimcUpdate() {
     const s = await (await fetch('/api/status')).json();
     renderStatus(s);
     if (s.simc?.state === 'outdated') {
-      setChip('status-simc', 'outdated', 'Simc still outdated',
+      setChip('status-simc', 'outdated', tr('status.simcStillOutdated'),
         `You now have the latest simc, but simc itself has not shipped data for game build ${s.simc.liveGame} yet — ` +
         'it usually catches up within a day or two. Click to try again later.');
     }
   } catch { /* next page load re-checks */ }
 }
 
-// ---------- pages (New sim / History) ----------
+// ---------- views (setup / history / results) ----------
+// Raidbots-style flow: the sim options live on one full-width scrolling page
+// (setup), and hitting Sim it navigates away to a dedicated results page --
+// not a side-by-side panel. "History" is its own page the same way; clicking
+// a saved entry opens it in the results view, same as a fresh run's report.
+let view = 'setup';
+function showView(next) {
+  view = next;
+  document.querySelector('.input-panel').classList.toggle('hidden', view !== 'setup');
+  $('quick-nav').classList.toggle('hidden', view !== 'setup');
+  $('sim-bar').classList.toggle('hidden', view !== 'setup');
+  $('history-panel').classList.toggle('hidden', view !== 'history');
+  $('results-panel').classList.toggle('hidden', view !== 'results');
+  const activePage = view === 'history' ? 'history' : 'sim'; // setup & results both map to the "New sim" tab
+  document.querySelectorAll('.page-btn').forEach((b) =>
+    b.classList.toggle('active', b.dataset.page === activePage));
+  if (view === 'results') {
+    // same identity block as the setup screen's Armory import, so the
+    // character stays visually anchored across the setup -> results jump
+    $('results-char-card').innerHTML = $('char-card').classList.contains('hidden') ? '' : $('char-card').innerHTML;
+  }
+  window.scrollTo({ top: 0 });
+}
+
 document.querySelectorAll('.page-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.page-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    const page = btn.dataset.page;
-    document.querySelector('.input-panel').classList.toggle('hidden', page !== 'sim');
-    $('history-panel').classList.toggle('hidden', page !== 'history');
+    const page = btn.dataset.page; // "sim" | "history"
+    showView(page === 'sim' ? 'setup' : page);
     if (page === 'history') loadHistory();
   });
 });
+
+$('back-to-setup').addEventListener('click', () => showView('setup'));
 
 async function loadHistory() {
   $('history-list').innerHTML = '<p class="empty">Loading…</p>';
@@ -650,6 +961,7 @@ async function viewHistoryEntry(id) {
   }
   document.querySelectorAll('.history-entry').forEach((el) =>
     el.classList.toggle('active', el.dataset.hist === id));
+  showView('results');
   $('empty-state').classList.add('hidden');
   $('progress-area').classList.add('hidden');
   $('results-area').classList.add('hidden');
@@ -700,14 +1012,18 @@ $('preset-all-on').addEventListener('click', () => setAllBuffsConsumables(true))
 $('preset-all-off').addEventListener('click', () => setAllBuffsConsumables(false));
 
 // ---------- tabs ----------
-const SIM_LABELS = { quick: 'Sim it', topgear: 'Compare gear', droptimizer: 'Run droptimizer' };
+const SIM_LABEL_KEYS = { quick: 'sim.button', topgear: 'sim.compareGear', droptimizer: 'sim.runDroptimizer', statweights: 'sim.calcStatWeights' };
+function simLabel(m) { return tr(SIM_LABEL_KEYS[m] ?? 'sim.button'); }
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     mode = tab.dataset.mode;
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
     $('gear-section').classList.toggle('hidden', mode !== 'topgear');
     $('dropt-section').classList.toggle('hidden', mode !== 'droptimizer');
-    $('sim-button').textContent = SIM_LABELS[mode];
+    $('quick-nav-gear').classList.toggle('hidden', mode !== 'topgear');
+    $('quick-nav-loot').classList.toggle('hidden', mode !== 'droptimizer');
+    $('sim-button').textContent = simLabel(mode);
+    $('sim-bar-status').textContent = '';
     if (mode === 'topgear') refreshGearList();
     if (mode === 'droptimizer') refreshDroptimizer();
   });
@@ -728,6 +1044,73 @@ $('profile').addEventListener('input', () => {
 $('gear-all').addEventListener('click', () => setAllGear(true));
 $('gear-none').addEventListener('click', () => setAllGear(false));
 $('gear-max-upgrade').addEventListener('click', applyMaxAffordableUpgrades);
+$('gear-catalyst-toggle').addEventListener('change', refreshGearList);
+
+// ---------- Item search: add any item by name, at any item level ----------
+let searchDebounce = null;
+let searchSeq = 0; // guards against a slow older request overwriting a newer one's results
+$('item-search-input').addEventListener('input', () => {
+  const q = $('item-search-input').value.trim();
+  clearTimeout(searchDebounce);
+  if (q.length < 2) { $('item-search-results').classList.add('hidden'); return; }
+  searchDebounce = setTimeout(() => runItemSearch(q), 300);
+});
+
+async function runItemSearch(q) {
+  const seq = ++searchSeq;
+  let body;
+  try {
+    const resp = await fetch(`/api/item-search?patch=${encodeURIComponent(patch)}&lang=${encodeURIComponent(lang)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q, profile: $('profile').value }),
+    });
+    body = await resp.json();
+  } catch {
+    return;
+  }
+  if (seq !== searchSeq) return; // a newer search has since started
+  const results = $('item-search-results');
+  results.classList.remove('hidden');
+  if (!body.items?.length) {
+    results.innerHTML = '<p class="empty">No matching items.</p>';
+    return;
+  }
+  results.innerHTML = body.items.map((it) => `
+    <button type="button" class="search-result" data-search-add="${it.id}">
+      <span class="gear-icon-row">${itemTile(it.id, { name: it.name, slot: prettySlot(it.slot), quality: it.quality })}
+        <span>${esc(it.name)} <span class="hint-inline">(${esc(prettySlot(it.slot))})</span></span></span>
+    </button>`).join('')
+    + (body.truncated ? '<p class="hint">More matches than shown — narrow your search.</p>' : '');
+  paintItemIcons(results);
+  loadWowheadWidget().then(refreshWowheadLinks); // search rows carry data-wowhead too, same as any other item icon
+  results.querySelectorAll('button.search-result').forEach((btn, idx) => {
+    btn.addEventListener('click', () => addSearchItem(body.items[idx]));
+  });
+}
+
+// Adds a found item to the gear list's own "Search" section, defaulting to
+// this season's top track step (its ilvl-select then offers every other
+// season step, or "custom…" for any number — see seasonLadder/ilvlControl).
+function addSearchItem(it) {
+  const ladder = seasonLadder();
+  const ilvl = ladder.at(-1)?.ilvl ?? season?.maxIlvl ?? 400;
+  searchItems.push({
+    _searchKey: `${it.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: it.name, id: it.id, ilvl, targetIlvl: null, slot: it.slot, section: 'Search',
+    line: `${it.slot}=,id=${it.id},ilevel=${ilvl}`,
+  });
+  $('item-search-input').value = '';
+  $('item-search-results').classList.add('hidden');
+  refreshGearList();
+}
+$('gear-slot-filter').addEventListener('click', (e) => {
+  const chip = e.target.closest('button.chip');
+  if (!chip) return;
+  chip.classList.toggle('active');
+  const slots = [...$('gear-slot-filter').querySelectorAll('button.chip.active')].map((c) => c.dataset.slot);
+  if (slots.length) soloGearSlots(slots); else setAllGear(true);
+});
 
 // Voidcore toggle is only meaningful on fully upgraded (6/6) items
 $('dropt-upgrade').addEventListener('change', () => {
@@ -738,8 +1121,34 @@ $('dropt-upgrade').addEventListener('change', () => {
 });
 
 function setAllGear(checked) {
-  document.querySelectorAll('#gear-list input').forEach((cb) => { cb.checked = checked; });
+  // equipped items are locked on (see refreshGearList) — always the baseline
+  // everything else is compared against, never a real toggle
+  document.querySelectorAll('#gear-list input:not(:disabled)').forEach((cb) => { cb.checked = checked; });
   updateGearCount();
+}
+
+// Tick only the "Items to compare" rows in the given slots, untick the rest —
+// used by both the per-item slot button (one slot) and the "Filter Sim by
+// Slot" multi-select above the list (one or more), which stay in sync.
+function soloGearSlots(slots) {
+  const wanted = new Set(slots);
+  document.querySelectorAll('#gear-list input[data-gear-index]:not(:disabled)').forEach((cb) => {
+    const it = gearItems[Number(cb.dataset.gearIndex)];
+    cb.checked = !!it && wanted.has(it.slot);
+  });
+  updateGearCount();
+}
+
+const SLOT_ORDER = ['head', 'neck', 'shoulder', 'back', 'chest', 'wrist', 'hands', 'waist',
+  'legs', 'feet', 'finger1', 'finger2', 'trinket1', 'trinket2', 'main_hand', 'off_hand'];
+
+function populateGearSlotFilter() {
+  const row = $('gear-slot-filter');
+  const present = new Set(gearItems.map((it) => it.slot));
+  const slots = SLOT_ORDER.filter((s) => present.has(s));
+  const prevActive = new Set([...row.querySelectorAll('button.chip.active')].map((c) => c.dataset.slot));
+  row.innerHTML = slots.map((s) => `<button type="button" class="chip${prevActive.has(s) ? ' active' : ''}"
+    data-slot="${esc(s)}">${esc(prettySlot(s))}</button>`).join('');
 }
 
 // upgrade_currencies=c:1792:16/c:3443:13/... (see server/gearParser.js for the
@@ -778,8 +1187,7 @@ function applyMaxAffordableUpgrades() {
     if (sel && [...sel.options].some((o) => o.value === String(item.targetIlvl ?? ''))) {
       sel.value = String(item.targetIlvl ?? '');
     }
-    // an item worth upgrading is worth simming, so tick it — equipped rows
-    // start unticked precisely so this is the thing that turns them on
+    // bag items start unticked; an item worth upgrading is worth simming
     if (item.targetIlvl) {
       const box = document.querySelector(`#gear-list input[data-gear-index="${i}"]`);
       if (box) box.checked = true;
@@ -797,6 +1205,36 @@ function updateGearCount() {
   $('gear-count').textContent = boxes.length
     ? `${boxes.filter((b) => b.checked).length} of ${boxes.length} selected`
     : '';
+  // mirrored into the sticky sim bar so the running total stays visible no
+  // matter how far down this (now full-page) gear list the user has scrolled
+  if (mode === 'topgear') $('sim-bar-status').textContent = $('gear-count').textContent;
+}
+
+// One synthetic "Catalyzed" candidate per non-crafted item that's in a
+// catalyst-eligible slot: the real tier piece it becomes, carrying the
+// looted item's own stats over via redirected_base_stats= (see
+// profileBuilder.js). Skips items with no known ilvl (nothing to redirect
+// from) and items that already ARE the tier piece.
+function catalystEntriesFor(sourceItems) {
+  if (!catalystSlots) return [];
+  const out = [];
+  for (const item of sourceItems) {
+    if (item.crafted) continue;
+    const target = catalystSlots[item.slot];
+    const ilvl = item.targetIlvl ?? item.ilvl;
+    if (!target || !ilvl || target.id === item.id) continue;
+    out.push({
+      name: target.name ?? `${item.name} (catalyzed)`,
+      id: target.id,
+      ilvl,
+      targetIlvl: null,
+      slot: item.slot,
+      section: 'Catalyzed',
+      catalystFrom: item.name,
+      line: `${item.slot}=,id=${target.id},ilevel=${ilvl},redirected_base_stats=${item.id}`,
+    });
+  }
+  return out;
 }
 
 async function refreshGearList() {
@@ -812,14 +1250,39 @@ async function refreshGearList() {
     const resp = await fetch('/api/gear', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile, patch, customLoadouts }),
+      body: JSON.stringify({ profile, patch, lang, customLoadouts }),
     });
     const body = await resp.json();
     // equipped items come after bag/vault ones, so the "Equipped" group in
     // the list renders below "Bags" — same checkbox+ilvl-select UI, used to
     // compare "what would upgrading what I already have get me".
     gearItems = [...(body.items ?? []), ...(body.equippedGear ?? [])];
+    catalystSlots = body.catalystSlots ?? null;
+    // "Catalyzed" is a synthetic section: one extra candidate per ticked-
+    // eligible looted item, simmed as the real tier piece it becomes (see
+    // catalystEntriesFor) — appended so it renders as its own gear-list group
+    // via the same bySection logic below, and gets real indices into
+    // gearItems so submitting/ticking it works exactly like any other item.
+    if ($('gear-catalyst-toggle')?.checked) {
+      gearItems = [...gearItems, ...catalystEntriesFor(gearItems)];
+    }
+    // items added via "Item search" live outside the export entirely, so
+    // they're kept in their own array (searchItems) and merged back in here
+    // on every refresh, same appended-with-real-indices treatment as Catalyzed
+    gearItems = [...gearItems, ...searchItems];
     itemSets = body.itemSets ?? [];
+    // every candidate is simmed with the enchant/gems already on that slot
+    // (see droptimizer.js) rather than whatever the bag item itself carries,
+    // so the tooltip should show that carried-over enchant/gems too, not the
+    // (usually empty) ones on the dropped item's own line
+    equippedEnchGemBySlot = {};
+    for (const eq of body.equippedGear ?? []) {
+      const line = String(eq.line ?? '');
+      equippedEnchGemBySlot[eq.slot] = {
+        enchantId: Number(line.match(/enchant_id=(\d+)/)?.[1]) || null,
+        gemIds: (line.match(/gem_id=([\d/]+)/)?.[1] ?? '').split('/').filter((g) => g && g !== '0'),
+      };
+    }
     renderItemSets();
     renderLoadoutOptions(body.talents ?? { available: false, loadouts: body.loadouts ?? [] });
   } catch {
@@ -833,28 +1296,82 @@ async function refreshGearList() {
     updateGearCount();
     return;
   }
-  const bySection = {};
-  gearItems.forEach((item, i) => {
-    (bySection[item.section] ??= []).push({ item, i });
-  });
-  $('gear-list').innerHTML = Object.entries(bySection).map(([section, entries]) => `
-    <div class="gear-group">${esc(section)} (${entries.length})</div>
-    ${entries.map(({ item, i }) => `
-      <label>
-        <input type="checkbox" data-gear-index="${i}"
-          ${item.section === 'Equipped' ? '' : 'checked'}>
-        <span class="gear-icon-row">${itemTile(item.id, {
-          name: item.name, ilvl: item.targetIlvl ?? item.ilvl, slot: prettySlot(item.slot),
-          statSource: Number(String(item.line ?? '').match(/redirected_base_stats=(\d+)/)?.[1]) || null,
-          source: section, quality: item.quality,
-        })}<span>${esc(item.name)}${trackTagFor(item) ? ` <span class="track-tag tier-${trackTagFor(item).toLowerCase()}">(${trackTagFor(item)})</span>` : ''}<span class="slot-tag">${esc(prettySlot(item.slot))}</span></span></span>
-        ${ilvlControl(item, i)}
-      </label>`).join('')}
-  `).join('');
+  // Raidbots-style: one block per SLOT (not per bags/equipped/etc. section),
+  // each a grid of clickable item cards -- the section still shows as a small
+  // label on the card since unlike Raidbots we also track Catalyzed/Search
+  // as distinct synthetic sources worth calling out.
+  const bySlot = {};
+  gearItems.forEach((item, i) => { (bySlot[item.slot] ??= []).push({ item, i }); });
+  const slots = SLOT_ORDER.filter((s) => bySlot[s]);
+  // equipped always leads its slot's list -- it's the fixed baseline, so it
+  // reads naturally as "here's what you have, here's what could replace it" --
+  // then reflow into column-major order (fill column 1 top-to-bottom, then
+  // column 2, ...) so the plain row-major CSS grid below reads that way too.
+  for (const slot of slots) {
+    bySlot[slot].sort((a, b) => (b.item.section === 'Equipped') - (a.item.section === 'Equipped'));
+    const cols = Math.min(4, bySlot[slot].length) || 1;
+    const rows = Math.ceil(bySlot[slot].length / cols);
+    const flat = bySlot[slot];
+    const ordered = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const item = flat[c * rows + r];
+        if (item) ordered.push(item);
+      }
+    }
+    bySlot[slot] = ordered;
+    bySlot[slot]._cols = cols;
+  }
+  $('gear-list').innerHTML = slots.map((slot) => `
+    <div class="gear-slot-block">
+      <h3 class="gear-slot-heading">${esc(prettySlot(slot))} (${bySlot[slot].length})</h3>
+      <div class="gear-slot-grid" style="--gear-cols: ${bySlot[slot]._cols}">
+        ${bySlot[slot].map(({ item, i }) => {
+          const info = {
+            name: item.name, ilvl: item.targetIlvl ?? item.ilvl, slot: prettySlot(item.slot),
+            statSource: Number(String(item.line ?? '').match(/redirected_base_stats=(\d+)/)?.[1]) || null,
+            source: item.section, quality: item.quality, craftingQuality: item.craftingQuality,
+            craftedStats: item.craftedStats,
+            enchantId: equippedEnchGemBySlot[item.slot]?.enchantId,
+            gemIds: equippedEnchGemBySlot[item.slot]?.gemIds,
+            ...(trackInfo(item)
+              ? { track: item.track, trackStep: item.stepIdx + 1, trackMax: season.tracks[item.track].length }
+              : {}),
+          };
+          // The sim always simmed your equipped gear as the baseline anyway
+          // (buildInput never touches it, buildTopGearInput skips a no-op
+          // "replace X with X" candidate for an un-upgraded one — see its
+          // skippedAsWorn) — so an equipped item is always ticked and locked
+          // rather than offering a toggle that either does nothing or would
+          // silently drop the baseline everything else compares against.
+          const equipped = item.section === 'Equipped';
+          return `
+      <label class="gear-card${equipped ? ' locked' : ''}" ${equipped ? 'title="Currently equipped — always simmed as the baseline every candidate is compared against"' : ''}>
+        <input type="checkbox" class="gear-card-check" data-gear-index="${i}" ${equipped ? 'checked disabled' : ''}>
+        <span class="gear-card-icon" ${tileDataAttrs(item.id, info)}>${itemTileWithBadge(item.id, info, item)}</span>
+        <span class="gear-card-body">
+          <span class="gear-card-name">${esc(item.name)}${trackTagFor(item) ? ` <span class="track-tag tier-${trackTagFor(item).toLowerCase()}">(${trackTagFor(item)})</span>` : ''}</span>
+          ${item.section !== 'Bags' ? `<span class="gear-card-section">${esc(item.section)}${equipped ? ' · locked' : ''}</span>` : ''}
+          ${ilvlControl(item, i)}
+        </span>
+        ${item.section === 'Search'
+          ? `<button type="button" class="search-remove" data-search-key="${esc(item._searchKey)}" title="Remove from the list">✕</button>` : ''}
+      </label>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
   paintItemIcons($('gear-list'));
   document.querySelectorAll('#gear-list input[type="checkbox"]').forEach((cb) => {
     cb.addEventListener('change', updateGearCount);
   });
+  document.querySelectorAll('#gear-list button.search-remove').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      searchItems = searchItems.filter((it) => it._searchKey !== btn.dataset.searchKey);
+      refreshGearList();
+    });
+  });
+  populateGearSlotFilter();
   document.querySelectorAll('#gear-list select.ilvl-select').forEach((sel) => {
     sel.addEventListener('click', (e) => e.preventDefault()); // don't toggle the row checkbox
     sel.addEventListener('change', () => {
@@ -881,7 +1398,15 @@ async function refreshGearList() {
   updateGearCount();
 }
 
+const SLOT_KEYS = {
+  head: 'slot.head', neck: 'slot.neck', shoulder: 'slot.shoulder', back: 'slot.back', chest: 'slot.chest',
+  wrist: 'slot.wrist', hands: 'slot.hands', waist: 'slot.waist', legs: 'slot.legs', feet: 'slot.feet',
+  finger1: 'slot.finger1', finger2: 'slot.finger2', trinket1: 'slot.trinket1', trinket2: 'slot.trinket2',
+  main_hand: 'slot.mainHand', off_hand: 'slot.offHand', weapons: 'slot.weapons',
+};
 function prettySlot(slot) {
+  const key = SLOT_KEYS[slot];
+  if (key && I18N[lang]?.[key]) return tr(key);
   return slot.replace(/_/g, ' ').replace(/(finger|trinket)([12])/, '$1 $2');
 }
 
@@ -913,7 +1438,7 @@ async function loadEquippedItems() {
     const r = await (await fetch('/api/gear', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile: $('profile').value, resolveIlvls: true, patch }),
+      body: JSON.stringify({ profile: $('profile').value, resolveIlvls: true, patch, lang }),
     })).json();
     equippedItems = r.equippedItems ?? null;
     $('tu-status').textContent = r.equippedItemsError ? `Failed: ${r.equippedItemsError}` : '';
@@ -974,7 +1499,7 @@ $('dropt-refresh').addEventListener('click', async () => {
   await fetch('/api/data/refresh', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ patch }),
+    body: JSON.stringify({ patch, lang }),
   });
   refreshDroptimizer();
 });
@@ -998,7 +1523,7 @@ async function refreshDroptimizer() {
     r = await (await fetch('/api/droptimizer/sources', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile, patch }),
+      body: JSON.stringify({ profile, patch, lang }),
     })).json();
   } catch {
     $('dropt-status').textContent = 'Could not reach the server.';
@@ -1297,7 +1822,30 @@ function renderItemSets() {
   });
 }
 
+// Every step of every upgrade track this season, deduped by item level and
+// sorted — the same ladder Raidbots' Item Search offers ("Only Seasonal Item
+// Levels"): a searched item has no track of its own to read steps from, so
+// instead of guessing one, every level anyone could actually be simming at
+// this season is on offer, plus a free "custom…" entry for anything else.
+function seasonLadder() {
+  if (!season?.tracks) return [];
+  const labelByIlvl = new Map();
+  for (const [track, ilvls] of Object.entries(season.tracks)) {
+    ilvls.forEach((ilvl, idx) => {
+      if (!labelByIlvl.has(ilvl)) labelByIlvl.set(ilvl, `${ilvl} — ${track} ${idx + 1}/${ilvls.length}`);
+    });
+  }
+  return [...labelByIlvl.entries()].map(([ilvl, label]) => ({ ilvl, label })).sort((a, b) => a.ilvl - b.ilvl);
+}
+
 function ilvlControl(item, i) {
+  if (item.section === 'Search') {
+    const ladder = seasonLadder();
+    return `<select class="ilvl-select" data-gear-index="${i}" title="Any of this season's upgrade-track item levels, or custom for any number">
+      ${ladder.map((o) => `<option value="${o.ilvl}"${o.ilvl === item.ilvl ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}
+      <option value="custom">custom…</option>
+    </select>`;
+  }
   const opts = upgradeOptionsFor(item);
   if (!opts.length) {
     // no known upgrades (or no parsed ilvl) — still allow custom editing
@@ -1365,7 +1913,7 @@ async function startSim() {
 
   hideError();
 
-  const payload = { profile, options, patch };
+  const payload = { profile, options, patch, lang };
   if (mode === 'topgear') {
     payload.mode = 'topgear';
     payload.items = [...document.querySelectorAll('#gear-list input[type="checkbox"]')]
@@ -1405,6 +1953,8 @@ async function startSim() {
       showError('Crafted gear is ticked but no stat combo is selected — tick at least one stat pair.');
       return;
     }
+  } else if (mode === 'statweights') {
+    payload.mode = 'statweights';
   }
 
   $('sim-button').disabled = true;
@@ -1435,6 +1985,7 @@ async function startSim() {
     ? `${body.skippedByHands} off-hand item${body.skippedByHands === 1 ? '' : 's'} skipped — a two-hander fills both hands.`
     : '';
   $('cancel-button').classList.remove('hidden');
+  showView('results');
   $('history-banner').classList.add('hidden');
   $('empty-state').classList.add('hidden');
   $('results-area').classList.add('hidden');
@@ -1563,14 +2114,15 @@ function renderResult(r) {
   $('results-area').classList.remove('hidden');
 
   $('dps-value').textContent = Math.round(r.dps).toLocaleString();
+  const es = lang === 'es';
   const meta = [
     r.player.name,
     r.player.spec,
-    `±${Math.round(r.dpsError).toLocaleString()} DPS error`,
-    `${r.targets} target${r.targets > 1 ? 's' : ''}`,
-    `${Math.round(r.fightLength)}s fight`,
-    r.iterations ? `${r.iterations.toLocaleString()} iterations` : null,
-    r.elapsedSeconds ? `simmed in ${r.elapsedSeconds.toFixed(1)}s` : null,
+    es ? `±${Math.round(r.dpsError).toLocaleString()} DPS de error` : `±${Math.round(r.dpsError).toLocaleString()} DPS error`,
+    es ? `${r.targets} objetivo${r.targets > 1 ? 's' : ''}` : `${r.targets} target${r.targets > 1 ? 's' : ''}`,
+    es ? `combate de ${Math.round(r.fightLength)}s` : `${Math.round(r.fightLength)}s fight`,
+    r.iterations ? (es ? `${r.iterations.toLocaleString()} iteraciones` : `${r.iterations.toLocaleString()} iterations`) : null,
+    r.elapsedSeconds ? (es ? `simulado en ${r.elapsedSeconds.toFixed(1)}s` : `simmed in ${r.elapsedSeconds.toFixed(1)}s`) : null,
   ].filter(Boolean).join(' · ');
   $('dps-meta').textContent = meta;
 
@@ -1592,11 +2144,23 @@ function renderResult(r) {
     </tr>`).join('');
   document.querySelector('#buffs-table tbody').innerHTML =
     buffRows || '<tr><td colspan="2">No notable buffs.</td></tr>';
+
+  $('statweights-block').classList.toggle('hidden', !r.statWeights?.length);
+  if (r.statWeights?.length) {
+    const maxWeight = Math.max(...r.statWeights.map((s) => s.value), 0.0001);
+    document.querySelector('#statweights-table tbody').innerHTML = r.statWeights.map((s) => `
+      <tr>
+        <td>${esc(s.label)}</td>
+        <td class="num">${s.value.toFixed(2)}</td>
+        <td>${shareBar(s.normalized * 100, (s.value / maxWeight) * 100)}</td>
+      </tr>`).join('');
+  }
 }
 
 let tgRows = [];
 let skippedNote = ''; // items the sim could not take as asked (an off-hand next to a two-hander)
 let tgActiveChip = null;
+let tgShowFilters = false; // Details' search/chips are worth showing (many sections/rows)
 let tgActiveSlot = null;
 let tgEquipped = null; // slot -> { name, ilvl } of the character's own gear
 
@@ -1613,11 +2177,13 @@ function renderTopGear(r) {
   $('topgear-area').classList.remove('hidden');
 
   $('tg-baseline').textContent = Math.round(r.dps).toLocaleString();
+  const tgEs = lang === 'es';
   $('tg-meta').textContent = [
     r.player.name,
     r.player.spec,
-    `${r.topgear.length} item${r.topgear.length === 1 ? '' : 's'} compared`,
-    r.elapsedSeconds ? `simmed in ${r.elapsedSeconds.toFixed(1)}s` : null,
+    tgEs ? `${r.topgear.length} objeto${r.topgear.length === 1 ? '' : 's'} comparado${r.topgear.length === 1 ? '' : 's'}`
+      : `${r.topgear.length} item${r.topgear.length === 1 ? '' : 's'} compared`,
+    r.elapsedSeconds ? (tgEs ? `simulado en ${r.elapsedSeconds.toFixed(1)}s` : `simmed in ${r.elapsedSeconds.toFixed(1)}s`) : null,
     skippedNote || null,
   ].filter(Boolean).join(' · ');
 
@@ -1626,18 +2192,27 @@ function renderTopGear(r) {
   tgActiveChip = null;
   tgActiveSlot = null;
   $('tg-search').value = '';
-  // a fresh result always opens on the detailed table
-  document.querySelectorAll('.result-tab').forEach((t) => t.classList.toggle('active', t.dataset.restab === 'details'));
+  // a fresh result always opens on "Your Top Gear" (paperdoll + Details table)
+  document.querySelectorAll('.result-tab').forEach((t) => t.classList.toggle('active', t.dataset.restab === 'gear'));
   $('best-setup').classList.add('hidden');
   $('topgear-table').classList.remove('hidden');
+  $('tg-gear').classList.remove('hidden');
+  renderTopGearGrid();
+  // the enchant subline is now always visible (not just on hover), so warm
+  // its cache up front instead of showing "enchant #NNNN" until first hover
+  warmEnchantNames(tgEquipped);
+  // gems link Wowhead's widget straight off their real item id (no warm-up
+  // fetch needed, unlike enchants) -- just make sure the widget script is
+  // loaded and has scanned the page's freshly-rendered [data-wowhead] links
+  loadWowheadWidget().then(refreshWowheadLinks);
 
   // filter chips (droptimizer runs have many sections; top gear has few)
   const sections = [...new Set(tgRows.map((t) => t.section))];
-  const showFilters = sections.length > 2 || tgRows.length > 30;
-  $('tg-filters').classList.toggle('hidden', !showFilters);
-  if (showFilters) {
+  tgShowFilters = sections.length > 2 || tgRows.length > 30;
+  $('tg-filters').classList.toggle('hidden', !tgShowFilters);
+  if (tgShowFilters) {
     $('tg-chips').innerHTML = ['All', ...sections].map((s, i) =>
-      `<button class="chip ${i === 0 ? 'active' : ''}" data-chip="${i === 0 ? '' : esc(s)}">${esc(s)}</button>`).join('');
+      `<button class="chip ${i === 0 ? 'active' : ''}" data-chip="${i === 0 ? '' : esc(s)}">${esc(i === 0 ? tr('filter.all') : translateChipLabel(s))}</button>`).join('');
     document.querySelectorAll('#tg-chips .chip').forEach((chip) => {
       chip.addEventListener('click', () => {
         tgActiveChip = chip.dataset.chip || null;
@@ -1649,7 +2224,7 @@ function renderTopGear(r) {
     const slots = [...new Set(tgRows.map((t) => slotFamily(t.placement)).filter(Boolean))];
     $('tg-slot-chips').innerHTML = slots.length > 1
       ? ['All slots', ...slots].map((s, i) =>
-        `<button class="chip ${i === 0 ? 'active' : ''}" data-slotchip="${i === 0 ? '' : esc(s)}">${esc(s)}</button>`).join('')
+        `<button class="chip ${i === 0 ? 'active' : ''}" data-slotchip="${i === 0 ? '' : esc(s)}">${esc(i === 0 ? tr('filter.allSlots') : s)}</button>`).join('')
       : '';
     document.querySelectorAll('#tg-slot-chips .chip').forEach((chip) => {
       chip.addEventListener('click', () => {
@@ -1667,10 +2242,26 @@ function renderTopGear(r) {
 // group paired slots into one chip: rings, trinkets, weapons
 function slotFamily(placement) {
   if (!placement) return null;
-  if (/^finger/.test(placement)) return 'Rings';
-  if (/^trinket/.test(placement)) return 'Trinkets';
-  if (placement === 'main_hand' || placement === 'off_hand') return 'Weapons';
-  return placement.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+  if (/^finger/.test(placement)) return tr('filter.rings');
+  if (/^trinket/.test(placement)) return tr('filter.trinkets');
+  if (placement === 'main_hand' || placement === 'off_hand') return titleCase(tr('slot.weapons'));
+  return titleCase(prettySlot(placement));
+}
+
+// Known, fixed category names get a translated chip label; anything else
+// (a raid/dungeon boss name, an item name used as a droptimizer section) has
+// no translation data available and is shown as-is.
+const CHIP_LABEL_KEYS = {
+  Consumables: 'filter.consumables', Enchants: 'filter.enchants', Gems: 'filter.gems',
+  'Omnium Folio': 'filter.omniumFolio', 'Talent loadouts': 'filter.talentLoadouts',
+  Bags: 'filter.bags', Equipped: 'filter.equipped', Catalyzed: 'filter.catalyzed', Search: 'filter.search',
+  Upgrades: 'filter.upgrades', Loadout: 'filter.loadout', Rings: 'filter.rings', Trinkets: 'filter.trinkets', Weapon: 'filter.weapon',
+};
+function translateChipLabel(s) {
+  if (CHIP_LABEL_KEYS[s]) return tr(CHIP_LABEL_KEYS[s]);
+  const row = String(s).match(/^Row (\d+)$/); // Omnium Folio's per-row sub-label (see enhancements.js)
+  if (row) return `${tr('filter.row')} ${row[1]}`;
+  return s;
 }
 
 $('tg-search').addEventListener('input', renderTopGearRows);
@@ -1698,16 +2289,27 @@ function renderTopGearRows() {
       .sort((a, b) => Math.max(...b[1].map((t) => t.delta)) - Math.max(...a[1].map((t) => t.delta)));
     const maxAbs = Math.max(...visible.map((t) => Math.abs(t.delta)), 1);
     document.querySelector('#topgear-table tbody').innerHTML = groups.map(([boss, rows]) =>
-      `<tr class="slot-group-row"><td colspan="5">${esc(boss ?? '')}</td></tr>` +
-      rows.map((t) => rowHtml(t, maxAbs)).join('')).join('') || '<tr><td colspan="5">No results match the filter.</td></tr>';
+      `<tr class="slot-group-row"><td colspan="6">${esc(boss ?? '')}</td></tr>` +
+      rows.map((t) => rowHtml(t, maxAbs)).join('')).join('') || '<tr><td colspan="6">No results match the filter.</td></tr>';
     paintItemIcons(document.querySelector('#topgear-table'));
+    refreshWowheadLinks();
     return;
   }
 
   const maxAbs = Math.max(...visible.map((t) => Math.abs(t.delta)), 1);
   document.querySelector('#topgear-table tbody').innerHTML =
-    visible.map((t) => rowHtml(t, maxAbs)).join('') || '<tr><td colspan="5">No results match the filter.</td></tr>';
+    visible.map((t) => rowHtml(t, maxAbs)).join('') || '<tr><td colspan="6">No results match the filter.</td></tr>';
   paintItemIcons(document.querySelector('#topgear-table'));
+  refreshWowheadLinks(); // gem sublines just rendered fresh [data-wowhead] links
+}
+
+// the crafter's two chosen secondaries, read straight out of the exact simmed
+// line (see profileBuilder.js's `line`) rather than needing every result row
+// to carry its own parsed copy -- only ever present on the single-item path,
+// same as `line` itself.
+function craftedStatsFromLine(line) {
+  const m = String(line ?? '').match(/(?:^|,)crafted_stats=(\d+)\/(\d+)/);
+  return m ? [Number(m[1]), Number(m[2])] : null;
 }
 
 function rowHtml(t, maxAbs) {
@@ -1737,29 +2339,90 @@ function rowHtml(t, maxAbs) {
     ? ` <button class="expander" data-exp="${detailId}" title="Show exactly what changes">▸ ${t.changes.length} change${t.changes.length === 1 ? '' : 's'}</button>`
     : '';
   const detailRow = expandable
-    ? `<tr class="detail-row hidden" data-detail="${detailId}"><td colspan="5"><ul class="change-list">
+    ? `<tr class="detail-row hidden" data-detail="${detailId}"><td colspan="6"><ul class="change-list">
         ${t.changes.map((c) => `<li>${esc(c.item ?? prettySlot(c.slot))} <span class="hint-inline">(${esc(prettySlot(c.slot))})</span>:
           ${esc(c.from)} → <strong>${esc(c.to)}</strong></li>`).join('')}
       </ul></td></tr>`
     : '';
+  const info = {
+    name: t.itemName, ilvl: t.ilvl, slot: prettySlot(t.placement),
+    source: [translateChipLabel(t.section), translateChipLabel(t.boss)].filter(Boolean).join(' → '),
+    enchantId: eq?.enchantId, gemIds: eq?.gemIds,
+    craftedStats: craftedStatsFromLine(t.line),
+    ...(trackStepFor(t.track, t.ilvl) ?? {}),
+  };
   return `
   <tr>
-    <td><span class="gear-icon-row">${itemId ? itemTile(itemId, {
-          name: t.itemName, ilvl: t.ilvl, slot: prettySlot(t.placement),
-          source: [t.section, t.boss].filter(Boolean).join(' → '),
-        }) : ''}<span><span class="${glow ? `item-glow ${glow}` : ''}">${esc(t.itemName ?? '?')}</span>${ilvls}${trackSchemeFor(t.track)}
-        ${t.catalysed ? '<span class="tier-tag" title="Simmed as if you had run this through the Catalyst, so your set bonus stays intact">catalysed</span>' : ''}
+    <td><span class="gear-icon-row" ${itemId ? tileDataAttrs(itemId, info) : ''}>${itemId ? itemTileWithBadge(itemId, info, t) : ''}<span><span class="${glow ? `item-glow ${glow}` : ''}">${esc(t.itemName ?? '?')}</span>${ilvls}${trackSchemeFor(t.track)}
+        ${t.catalysed ? `<span class="tier-tag" title="Catalyzed${t.catalystFromName ? ` from ${esc(t.catalystFromName)}` : ''} — shown as the real tier piece it becomes">catalyzed</span>` : ''}
         ${t.offHandLost ? '<span class="tier-tag warn" title="A two-hander fills both hands, so this was simmed with your off-hand taken off — its stats are not counted">off-hand removed</span>' : ''}
-        <span class="slot-tag">→ ${target}</span>${caret}</span></span></td>
-    <td><span class="source-tag">${esc(t.section)}</span>${t.boss ? `<span class="src-boss">→ ${esc(t.boss)}</span>` : ''}</td>
-    <td class="num">${Math.round(t.dps).toLocaleString()}</td>
-    <td class="num ${cls}">${sign}${Math.round(t.delta).toLocaleString()}</td>
+        <span class="slot-tag">→ ${target}</span>${caret}
+        ${itemId ? enchGemSubline(eq?.enchantId, eq?.gemIds) : ''}</span></span></td>
+    <td><span class="source-tag">${esc(translateChipLabel(t.section))}</span>${t.boss ? `<span class="src-boss">→ ${esc(translateChipLabel(t.boss))}</span>` : ''}</td>
+    <td class="num" title="Mean ${Math.round(t.dps).toLocaleString()} DPS ± ${Math.round(t.error).toLocaleString()} (margin of error)">${Math.round(t.dps).toLocaleString()}</td>
+    <td class="num ${cls}" title="${sign}${Math.round(t.delta).toLocaleString()} DPS ± ${Math.round(t.error).toLocaleString()} margin of error vs equipped">${sign}${Math.round(t.delta).toLocaleString()}</td>
     <td><div class="share-bar">
       <div class="track"><div class="fill" style="width:${fill.toFixed(1)}%; background:${t.delta >= 0 ? 'var(--green)' : 'var(--red)'}"></div></div>
       <span class="pct ${cls}">${sign}${t.deltaPct.toFixed(2)}%</span>
     </div></td>
+    <td class="row-menu-cell">${rowMenuHtml(t)}</td>
   </tr>${detailRow}`;
 }
+
+// Raidbots-style per-row "..." menu: pivots this one candidate into another
+// tool instead of leaving the results table a dead end. "Run in Quick Sim"
+// needs the exact line this candidate was simmed with (see profileBuilder.js's
+// `line`, added specifically for this) -- reconstructing an approximation
+// from itemId/ilvl alone would silently drop bonus_ids, crafted stats, gems,
+// so the action just doesn't offer itself on rows that predate that field
+// (older saved history entries) or the synthetic weapon-pair rows.
+function rowMenuHtml(t) {
+  const idx = tgRows.indexOf(t);
+  return `<div class="row-menu">
+    <button type="button" class="row-menu-toggle" data-row-idx="${idx}" title="More actions">⋯</button>
+    <div class="row-menu-panel hidden" data-row-panel="${idx}">
+      ${t.line ? `<button type="button" data-row-action="quicksim" data-row-idx="${idx}">Run in Quick Sim</button>` : ''}
+      <button type="button" data-row-action="copy" data-row-idx="${idx}">Copy to clipboard</button>
+    </div>
+  </div>`;
+}
+
+// swap `placement`'s equipped line in the pasted profile for `line` verbatim
+// -- same shape the addon itself writes (see gearParser.js), so a slot that
+// was empty just gets a new line appended rather than matched-and-replaced.
+function swapProfileLine(profileText, placement, line) {
+  const re = new RegExp(`^${placement}=.*$`, 'm');
+  return re.test(profileText) ? profileText.replace(re, line) : `${profileText}\n${line}`;
+}
+
+document.querySelector('#topgear-table tbody')?.addEventListener('click', (e) => {
+  const toggle = e.target.closest('.row-menu-toggle');
+  if (toggle) {
+    const panel = document.querySelector(`[data-row-panel="${toggle.dataset.rowIdx}"]`);
+    const wasHidden = panel.classList.contains('hidden');
+    document.querySelectorAll('.row-menu-panel').forEach((p) => p.classList.add('hidden'));
+    panel.classList.toggle('hidden', !wasHidden);
+    return;
+  }
+  const action = e.target.closest('[data-row-action]');
+  if (!action) { document.querySelectorAll('.row-menu-panel').forEach((p) => p.classList.add('hidden')); return; }
+  const t = tgRows[Number(action.dataset.rowIdx)];
+  if (!t) return;
+  document.querySelectorAll('.row-menu-panel').forEach((p) => p.classList.add('hidden'));
+  if (action.dataset.rowAction === 'copy') {
+    const sign = t.delta > 0 ? '+' : '';
+    const text = `${t.itemName ?? '?'} — ${sign}${Math.round(t.delta).toLocaleString()} DPS (${sign}${t.deltaPct.toFixed(2)}%)`;
+    navigator.clipboard?.writeText(text).catch(() => {});
+  } else if (action.dataset.rowAction === 'quicksim' && t.line && t.placement) {
+    $('profile').value = swapProfileLine($('profile').value, t.placement, t.line);
+    document.querySelector('.tab[data-mode="quick"]').click();
+    showView('setup');
+  }
+});
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.row-menu')) return;
+  document.querySelectorAll('.row-menu-panel').forEach((p) => p.classList.add('hidden'));
+});
 
 let tgDetailSeq = 0;
 
@@ -1768,13 +2431,69 @@ let tgDetailSeq = 0;
 // picks combine well but their gains are an estimate, not a promise.
 function bucketFor(t) {
   const k = t.sourceKind;
-  if (k === 'talents') return { key: 'talents', label: 'Talent build', order: 1 };
-  if (k === 'enchants') return { key: `e:${t.boss}`, label: `Enchant — ${t.boss}`, order: 2 };
-  if (k === 'gems') return { key: `g:${t.boss}`, label: t.boss, order: 3 };
-  if (k === 'consumables') return { key: `c:${t.boss}`, label: t.boss, order: 4 };
-  if (k === 'folio') return { key: `f:${t.boss}`, label: `Omnium Folio · ${t.boss}`, order: 5 };
+  if (k === 'talents') return { key: 'talents', label: tr('bucket.talentBuild'), order: 1 };
+  if (k === 'enchants') return { key: `e:${t.boss}`, label: `${tr('bucket.enchant')} — ${translateChipLabel(t.boss)}`, order: 2 };
+  if (k === 'gems') return { key: `g:${t.boss}`, label: translateChipLabel(t.boss), order: 3 };
+  if (k === 'consumables') return { key: `c:${t.boss}`, label: translateChipLabel(t.boss), order: 4 };
+  if (k === 'folio') return { key: `f:${t.boss}`, label: `${tr('filter.omniumFolio')} · ${translateChipLabel(t.boss)}`, order: 5 };
   if (k === 'upgrades') return null; // upgrading is not an either/or choice
   return { key: `s:${t.placement}`, label: prettySlot(t.placement), order: 6 };
+}
+
+// ---------- "Your Top Gear": the paperdoll, mirrors the downloaded report ----------
+// slot -> the best row for it, same rule Best Setup and the downloaded
+// report use: it must beat what's equipped there and clear its own margin
+// of error, or the slot keeps showing what you already have.
+function bestGearPicksBySlot() {
+  const best = new Map();
+  for (const t of tgRows) {
+    if (NON_SLOT_KINDS.has(t.sourceKind) || !t.placement) continue;
+    const cur = best.get(t.placement);
+    if (!cur || t.delta > cur.delta) best.set(t.placement, t);
+  }
+  for (const [slot, t] of [...best]) {
+    if (/\(current\)/.test(t.itemName ?? '') || !(t.delta > t.error)) best.delete(slot);
+  }
+  return best;
+}
+const NON_SLOT_KINDS = new Set(['enchants', 'gems', 'upgrades', 'folio', 'consumables', 'talents']);
+
+function renderTopGearGrid() {
+  const el = $('tg-gear');
+  if (!tgEquipped) {
+    el.innerHTML = '<p class="hint">This sim predates equipped-gear tracking — re-run it to see this tab.</p>';
+    return;
+  }
+  const picks = bestGearPicksBySlot();
+  const slots = SLOT_ORDER.filter((s) => tgEquipped[s]);
+  if (!slots.length) { el.innerHTML = '<p class="hint">No equipped-gear data for this sim.</p>'; return; }
+  const cellFor = (slot) => {
+    const eq = tgEquipped[slot];
+    const pick = picks.get(slot);
+    const itemId = pick ? pick.itemId : eq?.id;
+    const name = pick ? pick.itemName : eq?.name;
+    const ilvl = pick ? pick.ilvl : eq?.ilvl;
+    const info = {
+      name, ilvl, slot: prettySlot(slot), enchantId: eq?.enchantId, gemIds: eq?.gemIds,
+      craftedStats: pick ? craftedStatsFromLine(pick.line) : null,
+      ...(pick ? (trackStepFor(pick.track, pick.ilvl) ?? {}) : {}),
+    };
+    const detail = pick
+      ? `<span class="hint-inline block">was ${esc(eq?.name ?? 'nothing')} <span class="delta-pos">+${Math.round(pick.delta).toLocaleString()} DPS</span></span>`
+      : '';
+    return `<div class="pd-row${pick ? ' pd-changed' : ''}">
+      <div class="pd-slot hint-inline">${esc(prettySlot(slot))}</div>
+      <span class="gear-icon-row" ${tileDataAttrs(itemId, info)}>${itemTileWithBadge(itemId, info, pick)}<span>${esc(name ?? '?')}${ilvl ? ` <span class="hint-inline">(${ilvl})</span>` : ''}
+        ${enchGemSubline(eq?.enchantId, eq?.gemIds)}${detail}</span></span>
+    </div>`;
+  };
+  const half = Math.ceil(slots.length / 2);
+  el.innerHTML = `<p class="hint">${esc(tr('results.highlightedHint'))}</p>
+    <div class="pd-grid">
+      <div class="pd-col">${slots.slice(0, half).map(cellFor).join('')}</div>
+      <div class="pd-col">${slots.slice(half).map(cellFor).join('')}</div>
+    </div>`;
+  paintItemIcons(el);
 }
 
 function renderBestSetup() {
@@ -1820,13 +2539,19 @@ function renderBestSetup() {
     // a gain under twice its error bar could still be simulation noise
     const shaky = t.delta < t.error * 2
       ? ' <span class="bs-shaky" title="This gain is small next to the run\'s margin of error — re-run at a higher precision to confirm it">close to the margin</span>' : '';
+    const bsInfo = {
+      name: t.itemName, ilvl: t.ilvl, slot: prettySlot(t.placement),
+      source: [translateChipLabel(t.section), translateChipLabel(t.boss)].filter(Boolean).join(' → '),
+      enchantId: eq?.enchantId, gemIds: eq?.gemIds,
+      craftedStats: craftedStatsFromLine(t.line),
+      ...(trackStepFor(t.track, t.ilvl) ?? {}),
+    };
     return `<li class="bs-item">
         <div class="bs-row">
           <span class="bs-label">${esc(p.label)}</span>
-          <span class="bs-pick"><span class="gear-icon-row">${itemId ? itemTile(itemId, {
-              name: t.itemName, ilvl: t.ilvl, slot: prettySlot(t.placement),
-              source: [t.section, t.boss].filter(Boolean).join(' → '),
-            }) : ''}<span>${esc(t.itemName ?? '?')}${t.ilvl && eq?.ilvl ? ` <span class="ilvl">(${eq.ilvl} → ${t.ilvl})</span>` : ''}${trackSchemeFor(t.track)}</span></span></span>
+          <span class="bs-pick"><span class="gear-icon-row" ${itemId ? tileDataAttrs(itemId, bsInfo) : ''}>${itemId ? itemTileWithBadge(itemId, bsInfo, t) : ''}<span>${esc(t.itemName ?? '?')}${t.ilvl && eq?.ilvl ? ` <span class="ilvl">(${eq.ilvl} → ${t.ilvl})</span>` : ''}${trackSchemeFor(t.track)}
+              ${t.catalysed ? `<span class="tier-tag" title="Catalyzed${t.catalystFromName ? ` from ${esc(t.catalystFromName)}` : ''} — shown as the real tier piece it becomes">catalyzed</span>` : ''}
+              ${itemId ? enchGemSubline(eq?.enchantId, eq?.gemIds) : ''}</span></span></span>
           <span class="bs-gain delta-pos">+${Math.round(t.delta).toLocaleString()}${shaky}</span>
         </div>
         ${swap}${changes}
@@ -1843,10 +2568,14 @@ document.querySelectorAll('.result-tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.result-tab').forEach((t) => t.classList.toggle('active', t === tab));
     const best = tab.dataset.restab === 'best';
+    // "Your Top Gear" is the paperdoll AND the full Details table together
     $('best-setup').classList.toggle('hidden', !best);
+    $('tg-gear').classList.toggle('hidden', best);
     $('topgear-table').classList.toggle('hidden', best);
-    $('tg-filters').classList.toggle('hidden', best || !tgRows.length);
+    $('tg-filters').classList.toggle('hidden', best || !tgShowFilters);
     if (best) renderBestSetup();
+    else renderTopGearGrid();
+    refreshWowheadLinks();
   });
 });
 
@@ -1897,7 +2626,7 @@ function setReportId(id) {
 $('report-button').addEventListener('click', () => {
   if (!reportId) return;
   // the server sends it as an attachment, so this saves rather than navigates
-  window.location.href = `/api/history/${encodeURIComponent(reportId)}/report`;
+  window.location.href = `/api/history/${encodeURIComponent(reportId)}/report?lang=${encodeURIComponent(lang)}`;
 });
 
 // ---------- shutdown ----------
@@ -1921,6 +2650,10 @@ $('shutdown-button').addEventListener('click', async () => {
 function showError(msg) {
   $('error-box').textContent = msg;
   $('error-box').classList.remove('hidden');
+  // the submit button lives in the header now, away from this box, so make
+  // sure a validation error is actually visible instead of silently sitting
+  // off-screen below whatever the user last scrolled to
+  $('error-box').scrollIntoView({ block: 'nearest' });
 }
 function hideError() {
   $('error-box').classList.add('hidden');
@@ -2101,20 +2834,139 @@ const ICON_CDN = 'https://render.worldofwarcraft.com/us/icons/56';
 const iconIds = new Map(); // item id -> file id (null = looked up, has none)
 let iconFetch = null; // in-flight batch, so a burst of renders makes one request
 
-function itemTile(id, info = {}) {
+// Shared by itemTile() and by list rows that want the whole row (icon, name,
+// AND the enchant/gem subline under it) to trigger the same item hovercard,
+// not just the icon -- see topGearRowHtml() and renderTopGearGrid().
+function tileDataAttrs(id, info = {}) {
   const q = info.quality ?? 4;
-  const data = [
+  // real items always carry their own real id (unlike an enchant, which
+  // needs an offset-guess, or a gem/enchant tooltip our own itemStats()
+  // can't compute) -- link Wowhead's widget straight off it, same as gems
+  // and enchants, for one consistent hovercard source everywhere instead of
+  // our own separately-maintained fetch+render pipeline
+  const wowhead = id ? (lang === 'es' ? `es:item=${Number(id)}` : `item=${Number(id)}`) : '';
+  return [
     `data-item="${Number(id) || 0}"`,
+    wowhead ? `data-wowhead="${wowhead}"` : '',
     // a catalysed piece keeps the stats of what it was made from
     info.statSource ? `data-statsrc="${Number(info.statSource)}"` : '',
     info.name ? `data-name="${esc(info.name)}"` : '',
     info.ilvl ? `data-ilvl="${esc(info.ilvl)}"` : '',
     info.slot ? `data-slot="${esc(info.slot)}"` : '',
     info.source ? `data-source="${esc(info.source)}"` : '',
+    // the enchant/gems carried over from the equipped item in this slot (see
+    // droptimizer.js) -- every candidate for a slot is simmed with these, so
+    // showing them on the hovercard tells you what the row actually used
+    info.enchantId ? `data-enchant="${Number(info.enchantId)}"` : '',
+    info.gemIds?.length ? `data-gems="${info.gemIds.map(Number).join(',')}"` : '',
+    // upgrade track (e.g. "Myth 6/6") -- decoded server-side, never guessed
+    info.track ? `data-track="${esc(info.track)}"` : '',
+    info.trackStep != null ? `data-track-step="${Number(info.trackStep)}"` : '',
+    info.trackMax != null ? `data-track-max="${Number(info.trackMax)}"` : '',
+    // crafter's quality roll (1-5), same scale the in-game recipe UI shows --
+    // only ever set on crafted gear (see gearParser.js's craftingQuality)
+    info.craftingQuality ? `data-craftq="${Number(info.craftingQuality)}"` : '',
+    // the crafter's two chosen secondaries ("32-49") -- resolves the item's
+    // stat-template placeholders to real stats server-side (see itemStats.js)
+    info.craftedStats?.length === 2 ? `data-craftstats="${info.craftedStats.map(Number).join('-')}"` : '',
     `data-quality="${q}"`,
   ].filter(Boolean).join(' ');
-  if (!id) return `<span class="item-tile missing q${q}" ${data}></span>`;
-  return `<img class="item-tile q${q}" alt="" ${data}>`;
+}
+
+function itemTile(id, info = {}) {
+  const q = info.quality ?? 4;
+  const data = tileDataAttrs(id, info);
+  const cls = `item-tile q${q}${info.mini ? ' mini-icon' : ''}`;
+  if (!id) return `<span class="${cls} missing" ${data}></span>`;
+  const img = `<img class="${cls}" alt="" ${data}>`;
+  if (info.noLink) return img;
+  // Wowhead's widget only auto-attaches its hover tooltip to <a> elements,
+  // never to a bare <img> -- confirmed live: a plain data-wowhead <img> never
+  // fired a tooltip request, wrapping the same element in an <a> did.
+  const whHost = lang === 'es' ? 'es.wowhead.com' : 'www.wowhead.com';
+  const wowhead = lang === 'es' ? `es:item=${Number(id)}` : `item=${Number(id)}`;
+  return `<a class="item-tile-link" href="https://${whHost}/item=${Number(id)}" data-wowhead="${wowhead}" target="_blank" rel="noopener">${img}</a>`;
+}
+
+// Small flask badge over an item's icon: a catalyzed row already shows the
+// real tier piece (its itemId/itemName were swapped server-side — see
+// profileBuilder.js), and the badge is what makes that visible at a glance
+// without reading the row's text.
+function catalystBadge(t) {
+  if (!t?.catalysed) return '';
+  const title = `Catalyzed${t.catalystFromName ? ` from ${t.catalystFromName}` : ''} — shown as the tier piece it becomes, not the looted item`;
+  return `<span class="catalyst-badge" title="${esc(title)}">
+    <svg viewBox="0 0 24 24" width="10" height="10"><path d="M9 2v6.3L3.4 19a2 2 0 0 0 1.8 3h13.6a2 2 0 0 0 1.8-3L15 8.3V2M9 2h6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>
+  </span>`;
+}
+
+// A crafted item's quality roll (1-5 diamonds, same scale the in-game
+// recipe/tooltip shows), same corner-badge treatment as the catalyst flask --
+// only ever set on crafted gear (see gearParser.js's craftingQuality).
+function craftBadge(info) {
+  if (!info?.craftingQuality) return '';
+  return `<span class="craft-badge" title="Crafting Quality ${info.craftingQuality}/5">${info.craftingQuality}</span>`;
+}
+
+function itemTileWithBadge(id, info, t) {
+  if (!id) return itemTile(id, info);
+  return `<span class="item-tile-wrap">${itemTile(id, info)}${catalystBadge(t)}${craftBadge(info)}</span>`;
+}
+
+// The game's own enchant data has no per-enchant icon (SpellItemEnchantment's
+// IconFileDataID is 0 on every row), which is why Raidbots' Top Gear report —
+// the reference for this UI — shows the exact same generic scroll icon next
+// to every enchant rather than a distinct one each. This is that same asset,
+// hosted by Raidbots.
+const ENCHANT_ICON_URL = 'https://www.raidbots.com/static/images/icons/56/inv_misc_enchantedscroll.png';
+
+// The enchant/gem line shown under an item's name, each with its own small
+// icon (the fixed generic one for an enchant, or the gem's own real icon --
+// which reuses itemTile and gets its own hovercard on top). Hovering the
+// line's text still pops the parent item's card too (see the data attrs on
+// its wrapping row in renderTopGearGrid/rowHtml/renderBestSetup).
+function enchGemSubline(enchantId, gemIds) {
+  const parts = [];
+  if (enchantId) {
+    const name = gemOrEnchantLabel(enchantId, 'enchant');
+    const itemId = enchantItemIdCache.get(Number(enchantId));
+    const spellId = enchantSpellIdCache.get(Number(enchantId));
+    // enchants have no item id of their own (they're a SpellItemEnchantment
+    // row, not an item), so this app can't compute its own numeric stat line
+    // for one the way it does for a real item or gem -- there's no reliable
+    // local formula for what an enchant's own effect actually grants (see
+    // the note on /api/enchant-names). Prefer linking Wowhead's tooltip
+    // widget at the enchant's own scroll ITEM (its "Use: Permanently
+    // enchants... by N%" text is reliably complete, verified against three
+    // known enchants), falling back to the granted spell (sometimes empty)
+    // and finally to our own name-only hovercard. Either way the data
+    // attrs/link sit on the WRAPPING span/anchor, not just the icon --
+    // otherwise hovering the name text (not the tiny icon itself) bubbles
+    // past it to the parent item row's own data-item and shows that item's
+    // hovercard instead of the enchant's.
+    const inner = `<img class="mini-icon" alt="" src="${ENCHANT_ICON_URL}"> ${esc(name)}`;
+    // Wowhead's widget renders the tooltip in whatever locale subdomain the
+    // link points to -- matches the language switch the same way our own
+    // hovercards already do
+    const whHost = lang === 'es' ? 'es.wowhead.com' : 'www.wowhead.com';
+    const whEntity = itemId ? `item=${itemId}` : spellId ? `spell=${spellId}` : null;
+    const whId = lang === 'es' ? `es:${whEntity}` : whEntity;
+    parts.push(whEntity
+      ? `<a class="enchgem-item" href="https://${whHost}/${whEntity}" data-wowhead="${whId}" target="_blank" rel="noopener">${inner}</a>`
+      : `<span class="enchgem-item" data-name="${esc(name)}" data-source="Enchant">${inner}</span>`);
+  }
+  for (const g of gemIds ?? []) {
+    const gInfo = { name: gemOrEnchantLabel(g, 'gem'), mini: true, noLink: true };
+    // a gem carries a real item id already (no offset-guessing needed, unlike
+    // an enchant), but our own item hovercard still comes up empty for one:
+    // itemStats() requires an ilvl to compute anything, and gems are not
+    // itemized/leveled -- so link Wowhead's widget here too, straight off
+    // the real id (see the enchant case above for the language handling).
+    const gemWhHost = lang === 'es' ? 'es.wowhead.com' : 'www.wowhead.com';
+    const gemWhId = lang === 'es' ? `es:item=${g}` : `item=${g}`;
+    parts.push(`<a class="enchgem-item" href="https://${gemWhHost}/item=${g}" data-wowhead="${gemWhId}" target="_blank" rel="noopener">${itemTile(g, gInfo)} ${esc(gInfo.name)}</a>`);
+  }
+  return parts.length ? `<span class="hint-inline block enchgem">${parts.join('')}</span>` : '';
 }
 
 // Fill in every tile on the page that does not have its image yet.
@@ -2159,47 +3011,158 @@ function itemTip() {
   return tipEl;
 }
 
-// stats per "id:ilvl", fetched the first time an item is hovered
-const statCache = new Map();
 let tipToken = 0;
 
-function statLines(s) {
-  if (!s) return '';
-  const out = [];
-  if (s.weapon) {
-    out.push(`<div class="tip-stat">${s.weapon.min} - ${s.weapon.max} Damage`
-      + `<span class="tip-speed">Speed ${s.weapon.speed.toFixed(2)}</span></div>`);
-    out.push(`<div class="tip-dim">(${s.weapon.dps.toFixed(1)} damage per second)</div>`);
+// enchant id -> its real name ("Enchant Chest - Mark of the Worldsoul"),
+// fetched from the game client's own data (see /api/enchant-names) the first
+// time it's needed and cached from then on; null = looked up, found nothing.
+const enchantNameCache = new Map();
+// enchant id -> the spell id its primary effect grants, when there is one
+// (see /api/enchant-names) -- used to link a real Wowhead tooltip widget for
+// the enchant's actual numeric effect, which this app has no correct local
+// formula for (see server/index.js's /api/enchant-names for why).
+const enchantSpellIdCache = new Map();
+// enchant id -> its scroll item's id (server-guessed via a verified fixed
+// offset, confirmed against our own item cache -- see
+// ENCHANT_TO_SCROLL_ITEM_OFFSET in server/index.js). The scroll item's own
+// Wowhead tooltip reliably has the full "Use: Permanently enchants... by
+// N%" text, unlike the enchant's underlying spell (often empty) -- preferred
+// over enchantSpellIdCache whenever both exist.
+const enchantItemIdCache = new Map();
+let enchantNameFetch = null;
+
+// Loads Wowhead's own public tooltip widget script once, the first time an
+// enchant with a resolvable spell id is actually shown -- a session that
+// never sees one never touches the network for this. $WowheadPower.refreshLinks()
+// (documented by Wowhead for exactly this case) re-scans the page for new
+// [data-wowhead] links after each redraw.
+let wowheadWidgetLoading = null;
+function loadWowheadWidget() {
+  if (window.$WowheadPower) return Promise.resolve();
+  if (wowheadWidgetLoading) return wowheadWidgetLoading;
+  wowheadWidgetLoading = new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://wow.zamimg.com/widgets/power.js';
+    s.onload = resolve;
+    s.onerror = resolve; // offline / blocked -- links just stay plain text
+    document.head.appendChild(s);
+  });
+  return wowheadWidgetLoading;
+}
+function refreshWowheadLinks() {
+  window.$WowheadPower?.refreshLinks?.();
+}
+// every item tile now links Wowhead's widget (see tileDataAttrs) -- items
+// show up almost everywhere (char card, gear list, every results table), so
+// load it up front rather than waiting for the first enchant/gem hover
+loadWowheadWidget();
+
+// Prefetches every equipped slot's enchant name in one request, so "Your Top
+// Gear" and Details show the real name straight away instead of "enchant
+// #NNNN" until something happens to be hovered. Also skips names already in
+// the season's curated comparison list (gemOrEnchantLabel finds those on its
+// own, no fetch needed).
+async function warmEnchantNames(equipped) {
+  // fetch the real (locale-correct) name for every equipped enchant not yet
+  // cached -- including ones the curated comparison list already has a
+  // (English-only) label for, since the real name now wins over that (see
+  // gemOrEnchantLabel)
+  const ids = [...new Set(Object.values(equipped ?? {})
+    .map((eq) => eq?.enchantId).filter(Boolean))]
+    .filter((id) => !enchantNameCache.has(id));
+  if (!ids.length) return;
+  let anySpellId = false;
+  try {
+    const r = await fetch(`/api/enchant-names?ids=${ids.join(',')}&patch=${encodeURIComponent(patch)}&lang=${encodeURIComponent(lang)}`);
+    const j = await r.json();
+    for (const id of ids) {
+      enchantNameCache.set(id, j.names?.[id] ?? null);
+      if (j.spellIds?.[id]) { enchantSpellIdCache.set(id, j.spellIds[id]); anySpellId = true; }
+      if (j.itemIds?.[id]) { enchantItemIdCache.set(id, j.itemIds[id]); anySpellId = true; }
+    }
+  } catch {
+    for (const id of ids) enchantNameCache.set(id, null);
   }
-  if (s.armor) out.push(`<div class="tip-stat">${s.armor.toLocaleString()} Armor</div>`);
-  for (const p of s.primary ?? []) out.push(`<div class="tip-stat">+${p.value.toLocaleString()} ${esc(p.name)}</div>`);
-  if (s.stamina) out.push(`<div class="tip-stat">+${s.stamina.value.toLocaleString()} Stamina</div>`);
-  for (const r of s.secondary ?? []) out.push(`<div class="tip-sec">+${r.value.toLocaleString()} ${esc(r.name)}</div>`);
-  if (s.set) {
-    const rows = s.set.bonuses.map((b) => `<div class="tip-setb">(${b.threshold}) Set: ${esc(b.text.replace(/\n+/g, ' '))}</div>`).join('');
-    out.push(`<div class="tip-set"><div class="tip-setname">${esc(s.set.name)} (0/${s.set.pieces})</div>${rows}</div>`);
-  }
-  for (const e of s.effects ?? []) {
-    const label = e.trigger ? `${esc(e.trigger)}: ` : '';
-    const body = e.text.split('\n').filter((l) => l.trim())
-      .map((l, i) => `<div class="tip-fx-line">${i === 0 ? `<b>${label}</b>` : ''}${esc(l)}</div>`).join('');
-    const cd = e.cooldown ? `<div class="tip-dim">(${esc(e.cooldown)} cooldown)</div>` : '';
-    out.push(`<div class="tip-fx">${body}${cd}</div>`);
-  }
-  return out.join('');
+  if (anySpellId) await loadWowheadWidget();
+  // redraw whatever's currently showing the enchant sublines
+  if (!$('tg-gear').classList.contains('hidden')) renderTopGearGrid();
+  if (!$('topgear-table').classList.contains('hidden')) renderTopGearRows();
+  refreshWowheadLinks();
 }
 
-function tipShell(d, statsHtml) {
+async function fetchEnchantName(id, onReady) {
+  if (enchantNameCache.has(id)) return;
+  await enchantNameFetch; // one in-flight batch at a time is plenty for a single hover
+  if (enchantNameCache.has(id)) return;
+  enchantNameFetch = (async () => {
+    try {
+      const r = await fetch(`/api/enchant-names?ids=${id}&patch=${encodeURIComponent(patch)}&lang=${encodeURIComponent(lang)}`);
+      const j = await r.json();
+      enchantNameCache.set(id, j.names?.[id] ?? null);
+      if (j.spellIds?.[id]) enchantSpellIdCache.set(id, j.spellIds[id]);
+      if (j.itemIds?.[id]) enchantItemIdCache.set(id, j.itemIds[id]);
+      if (j.spellIds?.[id] || j.itemIds?.[id]) await loadWowheadWidget();
+    } catch { enchantNameCache.set(id, null); }
+  })();
+  await enchantNameFetch;
+  onReady?.();
+  refreshWowheadLinks();
+}
+
+// id -> the season's display name for a gem or enchant, from the option
+// lists the "Also compare" panel already loaded into `season` -- an enchant
+// not in that curated list falls back to enchantNameCache (the real game
+// name, fetched on demand) and finally to the raw id.
+function gemOrEnchantLabel(id, kind) {
+  if (kind === 'enchant') {
+    // the game client's own name (see server/wagoData.js's loadEnchantNames)
+    // is fetched per the CURRENT language and wins over the season config's
+    // curated comparison list, which is hand-written English only -- matches
+    // how the downloaded report already prioritizes these (see
+    // enchGemLabelsFrom in server/index.js). Falls back to the curated label
+    // (still meaningful, just English) until warmEnchantNames'/
+    // fetchEnchantName's request lands and triggers a redraw.
+    const cached = enchantNameCache.get(Number(id));
+    if (cached) return cached;
+    for (const arr of Object.values(season?.enchantOptions ?? {})) {
+      const m = Array.isArray(arr) && arr.find((e) => String(e.id) === String(id));
+      if (m) return m.label;
+    }
+    return `enchant #${id}`;
+  }
+  const g = (season?.gemOptions ?? []).find((g) => String(g.id) === String(id))
+    ?? (season?.diamondOptions?.options ?? []).find((x) => String(x.id) === String(id));
+  return g?.label ?? `gem #${id}`;
+}
+
+// title-case: slot/track names arrive in simc's lowercase form
+const titleCase = (s) => String(s).replace(/\b\w/g, (c) => c.toUpperCase());
+
+// A bare-name hovercard for whatever has no Wowhead-resolvable id -- a
+// missing/unknown item, or an enchant that never resolved a spell/scroll id
+// (see fetchEnchantName). Every item, gem and resolvable enchant now links
+// Wowhead's own widget instead (see tileDataAttrs / enchGemSubline), which
+// has real, verified numbers this app has no correct local formula for.
+function tipShell(d) {
   const rows = [];
   if (d.ilvl) rows.push(`<div class="tip-ilvl">Item Level ${esc(d.ilvl)}</div>`);
-  // slot names arrive in simc's lowercase form; title-case them for the card
-  if (d.slot) {
-    const slot = String(d.slot).replace(/\b\w/g, (c) => c.toUpperCase());
-    rows.push(`<div class="tip-slot">${esc(slot)}</div>`);
+  if (d.track && d.trackStep && d.trackMax) {
+    const tier = (TRACK_TAG[d.track] ?? '').toLowerCase();
+    rows.push(`<div class="tip-track${tier ? ` tier-${tier}` : ''}">Upgrade Level: ${esc(d.track)} ${esc(d.trackStep)}/${esc(d.trackMax)}</div>`);
+  }
+  if (d.slot) rows.push(`<div class="tip-slot-row"><span class="tip-slot">${esc(titleCase(d.slot))}</span></div>`);
+  // enchant/gems this row was actually simmed with (carried from the
+  // currently-equipped item in this slot -- see gemOrEnchantLabel above)
+  if (d.enchant) {
+    const slot = d.slot ? ` ${titleCase(d.slot)}` : '';
+    rows.push(`<div class="tip-sec">Enchant${esc(slot)} - ${esc(gemOrEnchantLabel(d.enchant, 'enchant'))}</div>`);
+  }
+  if (d.gems) {
+    const names = d.gems.split(',').map((id) => gemOrEnchantLabel(id, 'gem')).join(', ');
+    rows.push(`<div class="tip-sec">Gems: ${esc(names)}</div>`);
   }
   return `<div class="tip-name q${esc(d.quality ?? 4)}">${esc(d.name ?? 'Item')}</div>`
     + rows.join('')
-    + (statsHtml ? `<div class="tip-stats">${statsHtml}</div>` : '')
     + (d.source ? `<div class="tip-source">${esc(d.source)}</div>` : '');
 }
 
@@ -2207,27 +3170,21 @@ function showItemTip(el) {
   const d = el.dataset;
   if (!d.name && !d.item) return;
   const tip = itemTip();
-  const id = Number(d.item);
-  const ilvl = Number(d.ilvl);
-  const src = Number(d.statsrc) || 0;
-  const key = id && ilvl ? `${id}:${ilvl}${src ? `:${src}` : ''}` : null;
-
-  tip.innerHTML = tipShell(d, key ? statLines(statCache.get(key)) : '');
+  tip.innerHTML = tipShell(d);
   tip.classList.remove('hidden');
   positionTip(el);
 
-  if (!key || statCache.has(key)) return;
-  // fetch once, then redraw if the pointer is still on this item
-  const token = ++tipToken;
-  fetch(`/api/items?q=${key}&patch=${encodeURIComponent(patch)}`)
-    .then((r) => r.json())
-    .then((j) => {
-      statCache.set(key, j.items?.[key] ?? null);
+  // an enchant outside the season's curated comparison list needs its real
+  // name (and, when it resolves, a Wowhead id) fetched on demand -- redraw
+  // once it lands so the card picks up the fresh name in the meantime
+  if (d.enchant && !enchantNameCache.has(Number(d.enchant))) {
+    const token = ++tipToken;
+    fetchEnchantName(Number(d.enchant), () => {
       if (token !== tipToken || tip.classList.contains('hidden')) return;
-      tip.innerHTML = tipShell(d, statLines(statCache.get(key)));
+      tip.innerHTML = tipShell(d);
       positionTip(el);
-    })
-    .catch(() => statCache.set(key, null));
+    });
+  }
 }
 
 function positionTip(el) {
@@ -2246,10 +3203,15 @@ function positionTip(el) {
 function hideItemTip() { if (tipEl) tipEl.classList.add('hidden'); }
 
 document.addEventListener('mouseover', (e) => {
-  const el = e.target.closest?.('[data-item], [data-name][data-ilvl]');
-  if (el) showItemTip(el);
+  // a [data-wowhead] link handles its own hover entirely (Wowhead's widget) --
+  // stop there rather than let closest() keep climbing to a data-item/
+  // data-name on some ancestor (the item whose slot the enchant is on) and
+  // popping OUR tooltip on top of theirs
+  const boundary = e.target.closest?.('[data-item], [data-name], [data-wowhead]');
+  if (boundary && !boundary.hasAttribute('data-wowhead')) showItemTip(boundary);
 });
 document.addEventListener('mouseout', (e) => {
-  if (e.target.closest?.('[data-item], [data-name][data-ilvl]')) hideItemTip();
+  const boundary = e.target.closest?.('[data-item], [data-name], [data-wowhead]');
+  if (boundary && !boundary.hasAttribute('data-wowhead')) hideItemTip();
 });
 document.addEventListener('scroll', hideItemTip, true);

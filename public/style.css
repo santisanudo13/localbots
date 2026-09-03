@@ -28,6 +28,10 @@ header {
   gap: 12px;
   padding: 14px 22px;
   border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg);
 }
 header h1 {
   margin: 0;
@@ -65,8 +69,25 @@ header h1 {
 .patch-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .ptr-tag { color: #7fb1ff; border-color: #3d64a8; }
 
+/* --- language switch (game-data text: item/set/loot names) --- */
+.lang-switch { display: flex; gap: 4px; }
+.lang-btn {
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.lang-btn.active { background: var(--accent); color: #1a1405; border-color: var(--accent); }
+
 /* --- header status chips --- */
 #status-bar { margin-left: auto; display: flex; gap: 8px; }
+
+/* --- header submit button (Sim it / Compare gear / Run droptimizer) --- */
+.header-actions { display: flex; gap: 8px; margin-left: 14px; }
+.header-actions button { padding: 7px 18px; font-size: 14px; }
 .status-chip {
   display: inline-flex;
   align-items: center;
@@ -87,32 +108,85 @@ header h1 {
 .dot-outdated { background: #f2a13b; box-shadow: 0 0 6px rgba(242, 161, 59, 0.75); }
 .dot-unknown { background: var(--muted); }
 
+/* Single full-width scrolling page for setup/results/history, Raidbots-style,
+   rather than a cramped fixed sidebar next to results. */
 main {
-  display: grid;
-  grid-template-columns: minmax(340px, 480px) 1fr;
-  gap: 18px;
-  padding: 18px 22px;
-  max-width: 1400px;
+  padding: 18px 22px 96px; /* bottom padding clears the fixed sim-bar */
+  width: 80%;
+  max-width: 1800px;
   margin: 0 auto;
-}
-@media (max-width: 900px) {
-  main { grid-template-columns: 1fr; }
 }
 
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 18px;
+  padding: 18px 24px;
 }
 .panel h2 {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--muted);
-  margin: 18px 0 8px;
+  margin: 28px 0 10px;
+  scroll-margin-top: 96px; /* clears the sticky header + quick-nav on anchor jump */
 }
 .panel h2:first-child { margin-top: 0; }
+
+/* --- Quick Nav: jump between the setup page's long sections --- */
+.quick-nav {
+  position: sticky;
+  top: 49px; /* sits right under the header */
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 22px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.quick-nav-label { color: var(--muted); font-size: 12px; margin-right: 4px; }
+.quick-nav-link {
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.quick-nav-link:hover { color: var(--text); border-color: var(--accent-dim); }
+
+/* --- sticky bottom action bar: always-visible Sim it button + live count,
+   so submitting a long setup page never needs scrolling back to the top --- */
+.sim-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 12px 22px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+}
+.sim-bar-status { color: var(--muted); font-size: 13px; margin-right: auto; }
+
+/* --- results page: full-width, separate from setup (Raidbots-style report page) --- */
+.results-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.results-char-card:empty { display: none; }
 
 .hint { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
 code {
@@ -152,7 +226,8 @@ textarea:focus, input:focus, select:focus {
   min-width: 0;
 }
 .options-grid select, .options-grid input,
-.armory-form select, .armory-form input[type="text"] {
+.armory-form select, .armory-form input[type="text"],
+#gear-slot-filter {
   width: 100%;
   min-width: 0;
   background: var(--panel-2);
@@ -162,6 +237,8 @@ textarea:focus, input:focus, select:focus {
   padding: 7px 8px;
   font-size: 14px;
 }
+#gear-slot-filter { margin-bottom: 8px; }
+#gear-slot-filter option { padding: 3px 4px; }
 
 /* stand-in for the Enemies input when the fight style fixes the target count */
 .fixed-note {
@@ -248,34 +325,58 @@ button.mini {
   border: 1px solid var(--border);
   white-space: nowrap;
 }
-#gear-list {
-  max-height: 320px;
-  overflow-y: auto;
+/* Top Gear's "Items to compare", Raidbots-style: one block per slot, each a
+   3-column grid of clickable item cards (click toggles the hidden checkbox),
+   rather than a small scrolling checkbox list -- this is the biggest single
+   piece of the setup page now that it has the room for it. */
+.gear-slot-block { margin: 14px 0; }
+.gear-slot-heading {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.gear-slot-grid {
+  /* app.js pre-orders each slot's items into column-major order (equipped
+     first, top of column 1) and fixes the same column count used here, so a
+     plain row-major grid renders them reading top-to-bottom per column. */
+  display: grid;
+  grid-template-columns: repeat(var(--gear-cols, 4), 1fr);
+  gap: 10px;
+}
+.gear-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 6px 10px;
   background: var(--panel-2);
-}
-#gear-list .gear-group {
-  color: var(--muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 8px 0 4px;
-}
-#gear-list label {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 14px;
-  padding: 2px 0;
   cursor: pointer;
 }
+.gear-card:has(.gear-card-check:checked) { border-color: var(--accent); background: rgba(242, 177, 53, 0.08); }
+/* equipped gear is locked on -- always the baseline, never a real toggle */
+.gear-card.locked { cursor: default; }
+.gear-card-check { position: absolute; opacity: 0; pointer-events: none; }
+.gear-card-icon { flex: none; }
+.gear-card-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.gear-card-name { font-size: 14px; }
+.gear-card-section {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.gear-card .search-remove { flex: none; align-self: flex-start; }
+/* bigger, Raidbots-style icon for gear cards -- the compact 26px size stays
+   for results tables, which have far less room per row. */
+.gear-card-icon .item-tile { width: 40px; height: 40px; border-radius: 6px; }
+.gear-card-name { font-size: 15px; }
 #gear-list input { accent-color: var(--accent); }
 #gear-list .ilvl {
   color: var(--muted);
   font-size: 12px;
-  margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
 .ilvl-select, .ilvl-custom {
@@ -291,6 +392,49 @@ button.mini {
 .ilvl-custom { width: 64px; }
 .ilvl.upgraded { color: var(--accent); }
 #gear-list .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+
+/* --- item search (Top Gear: add any item, at any item level) --- */
+.item-search-box input[type="search"] {
+  width: 100%;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 14px;
+}
+#item-search-results {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 6px 0 10px;
+  background: var(--panel-2);
+}
+#item-search-results .empty { color: var(--muted); font-size: 13px; padding: 8px 10px; }
+button.search-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 6px 10px;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+button.search-result:last-child { border-bottom: none; }
+button.search-result:hover { background: var(--panel); }
+button.search-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 0 2px;
+  cursor: pointer;
+}
+button.search-remove:hover { color: var(--red); }
 
 /* --- top gear results --- */
 #tg-baseline {
@@ -310,7 +454,12 @@ button.mini {
   padding: 1px 8px;
   white-space: nowrap;
 }
-.slot-tag { color: var(--muted); font-size: 12px; margin-left: 6px; }
+.slot-tag {
+  color: var(--muted); font-size: 12px; margin-left: 6px;
+  background: none; border: none; padding: 0; font: inherit; cursor: pointer;
+  text-decoration: underline dotted; text-underline-offset: 2px;
+}
+.slot-tag:hover { color: var(--accent); text-decoration-style: solid; }
 .track-tag { font-size: 12px; font-weight: 600; }
 .track-tag.tier-v { color: #1eff00; }
 .track-tag.tier-c { color: #0070dd; }
@@ -488,6 +637,14 @@ button.mini {
 .diff-boxes label { gap: 4px; }
 .hint-inline { color: var(--muted); font-size: 12px; }
 
+/* "Your Top Gear" paperdoll (results tab + downloaded report share this look) */
+#tg-gear .pd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; margin-top: 10px; }
+#tg-gear .pd-col { display: flex; flex-direction: column; }
+#tg-gear .pd-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 6px; border: 1px solid transparent; }
+#tg-gear .pd-row.pd-changed { border-color: var(--accent); background: rgba(242, 177, 53, 0.08); }
+#tg-gear .pd-slot { width: 66px; flex: none; }
+@media (max-width: 640px) { #tg-gear .pd-grid { grid-template-columns: 1fr; } }
+
 /* per-boss raid drop levels — collapsed, for checking against the game */
 .boss-levels { display: block; padding: 0 0 4px 0; }
 .boss-levels > summary {
@@ -521,7 +678,8 @@ button.mini {
   font-size: 14px;
   max-width: 320px;
 }
-#tg-chips, #tg-slot-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+#tg-chips, #tg-slot-chips, .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip-row { margin-bottom: 4px; }
 .chip {
   background: var(--panel-2);
   color: var(--muted);
@@ -532,6 +690,8 @@ button.mini {
   font-weight: 500;
 }
 .chip.active { background: var(--accent); color: #1a1405; border-color: var(--accent); }
+button.chip { cursor: pointer; font: inherit; }
+button.chip:hover { border-color: var(--accent-dim); }
 
 /* --- disabled toggle label --- */
 .disabled-label { opacity: 0.45; }
@@ -769,6 +929,24 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   align-items: center;
   gap: 8px;
 }
+.row-menu-col { width: 28px; }
+.row-menu-cell { position: relative; text-align: center; }
+.row-menu-toggle {
+  background: none; border: none; color: var(--muted); font-size: 16px;
+  padding: 2px 8px; line-height: 1; border-radius: 5px;
+}
+.row-menu-toggle:hover { color: var(--text); background: var(--panel-2); }
+.row-menu-panel {
+  position: absolute; right: 0; top: 100%; z-index: 20;
+  display: flex; flex-direction: column; min-width: 160px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); padding: 4px;
+}
+.row-menu-panel button {
+  background: none; border: none; color: var(--text); text-align: left;
+  font-size: 13px; font-weight: 500; padding: 7px 10px; border-radius: 5px;
+}
+.row-menu-panel button:hover { background: var(--panel-2); }
 .share-bar .track {
   flex: 1;
   height: 8px;
@@ -915,6 +1093,30 @@ span.char-item.missing,
 .item-tile.q3 { border-color: #0070dd; }
 .item-tile.q4 { border-color: #a335ee; }
 .item-tile.q5 { border-color: #ff8000; }
+/* wraps a plain item icon so Wowhead's widget (which only auto-links <a>
+   elements) attaches its hover tooltip -- purely structural, no link styling */
+.item-tile-link { display: inline-flex; flex: none; line-height: 0; }
+/* "catalyzed" badge over an item's icon -- see itemTileWithBadge() */
+.item-tile-wrap { position: relative; display: inline-flex; flex: none; }
+.catalyst-badge {
+  position: absolute; right: -4px; bottom: -4px; width: 14px; height: 14px;
+  display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  background: var(--accent); color: #1a1405; border: 1.5px solid var(--bg);
+}
+/* crafted item's quality roll (1-5), opposite corner from the catalyst badge */
+.craft-badge {
+  position: absolute; left: -4px; bottom: -4px; width: 14px; height: 14px;
+  display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  background: #a335ee; color: #fff; border: 1.5px solid var(--bg);
+  font-size: 9px; font-weight: 700; line-height: 1;
+}
+/* enchant/gem subline under an item's name (mirrors the downloaded report) */
+.enchgem { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
+.enchgem-item { display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; }
+a.enchgem-item:hover { text-decoration: underline; }
+.mini-icon { width: 14px; height: 14px; border-radius: 3px; flex: none; vertical-align: -3px; border-width: 1px; }
+.mini-icon.blank, span.mini-icon { display: inline-block; background: var(--panel-2); }
+img.item-tile.mini-icon { width: 14px; height: 14px; border-radius: 3px; }
 .item-tile.missing {
   background:
     linear-gradient(135deg, transparent 46%, var(--border) 46%, var(--border) 54%, transparent 54%),
@@ -924,7 +1126,7 @@ span.char-item.missing,
 .item-tip {
   position: absolute;
   z-index: 90;
-  max-width: 320px;
+  max-width: 340px;
   pointer-events: none;
   background: #0b0d11;
   border: 1px solid var(--border);
@@ -942,7 +1144,15 @@ span.char-item.missing,
 .item-tip .tip-name.q4 { color: #a335ee; }
 .item-tip .tip-name.q5 { color: #ff8000; }
 .item-tip .tip-ilvl { color: var(--accent); }
+/* upgrade track line ("Upgrade Level: Myth 6/6"), tinted like the (M)/(H)/... tags elsewhere */
+.item-tip .tip-track { font-weight: 600; }
+.item-tip .tip-track.tier-v { color: #1eff00; }
+.item-tip .tip-track.tier-c { color: #0070dd; }
+.item-tip .tip-track.tier-h { color: #a335ee; }
+.item-tip .tip-track.tier-m { color: #ff8000; }
+.item-tip .tip-slot-row { display: flex; justify-content: space-between; gap: 10px; }
 .item-tip .tip-slot { color: var(--text); }
+.item-tip .tip-type { color: var(--text); }
 .item-tip .tip-source { color: var(--muted); margin-top: 3px; }
 
 /* item lists put the icon before the label */
@@ -965,6 +1175,8 @@ span.char-item.missing,
 /* tier set block in the item tooltip */
 .item-tip .tip-set { margin-top: 7px; border-top: 1px solid var(--border); padding-top: 6px; }
 .item-tip .tip-setname { color: var(--accent); font-weight: 600; }
+.item-tip .tip-setlist { margin: 4px 0 0; padding-left: 18px; color: var(--muted); }
+.item-tip .tip-setlist li { margin-top: 1px; }
 .item-tip .tip-setb { color: #4ade80; margin-top: 4px; }
 
 /* --- crest pricing summary --------------------------------------------- */

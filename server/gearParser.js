@@ -58,6 +58,15 @@ export function parseGear(profileText) {
           // crafted gear always carries crafted_stats= in the export;
           // dropped gear never does — this gates crafted-only upgrade options
           crafted: /[,=]crafted_stats=/.test(`,${content}`),
+          // the crafter's quality roll (1-5 diamonds, same scale the in-game
+          // recipe/tooltip shows) -- only ever present on crafted gear
+          craftingQuality: Number(`,${content}`.match(/[,=]crafting_quality=(\d)/)?.[1]) || null,
+          // the two secondaries the crafter actually picked -- resolves the
+          // item's stat-template placeholders to real stats (see itemStats.js)
+          craftedStats: (() => {
+            const m = `,${content}`.match(/[,=]crafted_stats=(\d+)\/(\d+)/);
+            return m ? [Number(m[1]), Number(m[2])] : null;
+          })(),
         });
         pendingName = null;
       } else {
@@ -83,6 +92,11 @@ export function parseGear(profileText) {
           line,
           section: 'Equipped',
           crafted: /[,=]crafted_stats=/.test(`,${line}`),
+          craftingQuality: Number(`,${line}`.match(/[,=]crafting_quality=(\d)/)?.[1]) || null,
+          craftedStats: (() => {
+            const m = `,${line}`.match(/[,=]crafted_stats=(\d+)\/(\d+)/);
+            return m ? [Number(m[1]), Number(m[2])] : null;
+          })(),
         });
       }
       pendingName = null;
