@@ -203,10 +203,22 @@ app.get('/api/history/:id/report', async (req, res) => {
   }
   const { gemLabels, enchantLabels } = enchGemLabelsFrom(
     localizeSeasonConfig(localePatch.config, localePatch), localePatch.enchantNames);
+  // item NAMES were baked into the saved result at sim time, in whatever
+  // language was active then -- re-resolve them from this request's own
+  // language so a report downloaded in a different language than the sim was
+  // run in still shows translated names, not stale ones (see report.js)
+  localePatch.itemTables ??= loadItemTables(localePatch.paths.cacheDir);
+  const itemNames = {};
+  if (localePatch.itemTables) {
+    for (const id of reportItemIds(entry)) {
+      const nm = localePatch.itemTables.items.get(Number(id))?.name;
+      if (nm) itemNames[id] = nm;
+    }
+  }
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Content-Disposition',
     `attachment; filename="${reportFilename(entry).replace(/"/g, '')}"`);
-  res.send(buildReportHtml(entry, { icons, consumableLabels, gemLabels, enchantLabels, qualities }));
+  res.send(buildReportHtml(entry, { icons, consumableLabels, gemLabels, enchantLabels, qualities, itemNames }));
 });
 
 // every item the report draws a tile for

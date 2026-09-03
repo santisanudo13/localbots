@@ -2805,7 +2805,10 @@ function tipShell(d, s) {
     rows.push(`<div class="tip-sec">Gems: ${esc(names)}</div>`);
   }
   if (s?.requiredLevel) rows.push(`<div class="tip-dim">Requires Level ${esc(s.requiredLevel)}</div>`);
-  return `<div class="tip-name q${esc(d.quality ?? 4)}">${esc(d.name ?? 'Item')}</div>`
+  // prefer the freshly-fetched name over the one baked into the sim result
+  // row at sim time (`d.name`, in whatever language was active then) --
+  // `s.name` always reflects the currently-selected language
+  return `<div class="tip-name q${esc(d.quality ?? 4)}">${esc(s?.name ?? d.name ?? 'Item')}</div>`
     + rows.join('')
     + (d.source ? `<div class="tip-source">${esc(d.source)}</div>` : '');
 }

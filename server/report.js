@@ -97,10 +97,15 @@ function bestPicksBySlot(rows) {
   return best;
 }
 
-function comparisonTable(rows, icons, equipped, gemLabels, enchantLabels) {
+function comparisonTable(rows, icons, equipped, gemLabels, enchantLabels, itemNames) {
   if (!rows?.length) return '';
   const maxAbs = Math.max(...rows.map((t) => Math.abs(Number(t.delta) || 0)), 1);
   const body = rows.map((t) => {
+    // the row's own itemName was baked in at sim time, in whatever language
+    // was active then; itemNames (keyed by id, built from THIS report
+    // request's language) overrides it so a report downloaded in a different
+    // language than the sim was run in still shows translated names
+    const itemName = itemNames?.[t.itemId] ?? t.itemName;
     const delta = Number(t.delta) || 0;
     const cls = delta > (Number(t.error) || 0) ? 'pos' : delta < -(Number(t.error) || 0) ? 'neg' : 'zero';
     const sign = delta > 0 ? '+' : '';
@@ -118,7 +123,7 @@ function comparisonTable(rows, icons, equipped, gemLabels, enchantLabels) {
     // slot (see droptimizer.js) -- same source topGearGrid's enchGemLine uses
     const eq = equipped?.[t.placement];
     return `<tr>
-      <td class="item">${iconTile(t.itemId, icons?.[t.itemId], t)}<span>${esc(t.itemName ?? '?')} ${ilvl}${tags}
+      <td class="item">${iconTile(t.itemId, icons?.[t.itemId], t)}<span>${esc(itemName ?? '?')} ${ilvl}${tags}
         <span class="muted block">→ ${esc(prettySlot(t.placement))}</span>
         ${eq ? enchGemLine(eq, gemLabels, enchantLabels, icons) : ''}</span></td>
       <td>${source}</td>
@@ -201,19 +206,19 @@ function enchGemLine(it, gemLabels, enchantLabels, icons) {
 // a row from the Top Gear (DPS) table below beats it (bestPicksBySlot) --
 // that slot is then highlighted and shows the winning item plus its gain,
 // the same "what changed" view Raidbots' Top Gear report leads with.
-function topGearGrid(equipped, picksBySlot, icons, qualities, gemLabels, enchantLabels) {
+function topGearGrid(equipped, picksBySlot, icons, qualities, gemLabels, enchantLabels, itemNames) {
   const slots = Object.keys(SLOT_LABELS).filter((s) => equipped?.[s]);
   if (!slots.length) return '';
   const cellFor = (slot) => {
     const eq = equipped[slot];
     const pick = picksBySlot?.get(slot);
     const itemId = pick ? pick.itemId : eq?.id;
-    const name = pick ? pick.itemName : eq?.name;
+    const name = itemNames?.[itemId] ?? (pick ? pick.itemName : eq?.name);
     const ilvl = pick ? pick.ilvl : eq?.ilvl;
     const q = qualities?.[itemId];
     const nameClass = q != null ? ` q${esc(q)}` : '';
     const gain = pick
-      ? `<span class="muted block">was ${esc(eq?.name ?? 'nothing')} <span class="pos">+${num(pick.delta)} DPS</span></span>`
+      ? `<span class="muted block">was ${esc(itemNames?.[eq?.id] ?? eq?.name ?? 'nothing')} <span class="pos">+${num(pick.delta)} DPS</span></span>`
       : '';
     return `<div class="pd-row${pick ? ' pd-changed' : ''}">
       <div class="pd-slot muted">${esc(prettySlot(slot))}</div>
@@ -259,7 +264,7 @@ function consumableList(consumables, labels) {
 // icons: { [itemId]: iconFileId } — optional; without it the tiles are blank
 export function buildReportHtml(entry, {
   icons = null, consumableLabels = null, gemLabels = null, enchantLabels = null, qualities = null,
-  appUrl = 'https://github.com/santisanudo13/localbots',
+  itemNames = null, appUrl = 'https://github.com/santisanudo13/localbots',
 } = {}) {
   const r = entry.result ?? {};
   const p = r.player ?? {};
@@ -351,8 +356,8 @@ export function buildReportHtml(entry, {
     <p>${esc(settingsLine(entry))}</p>
   </div>
 
-  ${topGearGrid(r.equipped, picksBySlot, icons, qualities, gemLabels, enchantLabels)}
-  <div class="scroll">${comparisonTable(r.topgear, icons, r.equipped, gemLabels, enchantLabels)}</div>
+  ${topGearGrid(r.equipped, picksBySlot, icons, qualities, gemLabels, enchantLabels, itemNames)}
+  <div class="scroll">${comparisonTable(r.topgear, icons, r.equipped, gemLabels, enchantLabels, itemNames)}</div>
   ${statWeightsTable(r.statWeights)}
   ${abilityTable(r.abilities, p.name)}
   ${buffTable(r.buffs)}
