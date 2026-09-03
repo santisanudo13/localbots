@@ -155,7 +155,7 @@ export function loadItemTables(cacheDir) {
     'StatPercentEditor_3', 'StatPercentEditor_4', 'StatPercentEditor_5',
     'StatModifier_bonusStat_0', 'StatModifier_bonusStat_1', 'StatModifier_bonusStat_2',
     'StatModifier_bonusStat_3', 'StatModifier_bonusStat_4', 'StatModifier_bonusStat_5',
-    'Bonding', 'RequiredLevel',
+    'Bonding', 'RequiredLevel', 'AllowableClass',
   ]);
   if (!sparse) return null;
   const items = new Map();
@@ -174,6 +174,7 @@ export function loadItemTables(cacheDir) {
       variance: Number(r.DmgVariance),
       bonding: Number(r.Bonding),
       requiredLevel: Number(r.RequiredLevel),
+      allowableClass: Number(r.AllowableClass), // class bitmask, -1 = any class
       allocs,
     });
   }

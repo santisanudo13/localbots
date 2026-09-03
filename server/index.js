@@ -10,7 +10,7 @@ import { parseGear, GEAR_SLOTS } from './gearParser.js';
 import { loadLootDb, buildLootDb, downloadTables, cacheStatus, loadItemSetMap, loadBonusUpgradeMap, loadSocketBonusIds, loadEnchantNames, patchPaths } from './wagoData.js';
 import { buildSourceTree, buildDroptimizerInput, tierSetSummary, weaponSetup, seasonConfig as fullSeasonConfig } from './droptimizer.js';
 import { probeKnownItems, loadProbeCache } from './simcProbe.js';
-import { CLASS_IDS, INV_SLOTS } from './lootFilter.js';
+import { CLASS_IDS, INV_SLOTS, ARMOR_TYPE, WEAPONS } from './lootFilter.js';
 import { saveHistoryEntry, listHistory, getHistoryEntry, deleteHistoryEntry } from './history.js';
 import { buildReportHtml, reportFilename } from './report.js';
 import { updateStatus } from './status.js';
@@ -717,6 +717,55 @@ app.get('/api/items', (req, res) => {
     out[pair] = entry;
   }
   res.json({ items: out });
+});
+
+// Raidbots' Top Gear "Item Search": add ANY equippable item by name, at any
+// item level -- not limited to what the export's bags/vault happen to list.
+// Search runs over the same local item database everything else reads
+// (ItemSparse via itemStats.js's loadItemTables), so it needs no external
+// lookup and respects the current language/patch like any other item name.
+// POST (not GET) because it takes the pasted profile, same as /api/gear --
+// used to scope results to the character's class ("usable" gate), the same
+// way raidbots.com/api/item/:name?classId=&specId=&usable=true does (their
+// own backend, not a live wago.tools/Wowhead call -- verified with Playwright
+// against the network tab: everything else Top Gear's item search needs
+// comes from static JSON bundles they rebuild per game build, which is the
+// same role our own "Refresh data" cache plays here).
+app.post('/api/item-search', (req, res) => {
+  const q = String(req.body?.q ?? '').trim().toLowerCase();
+  if (q.length < 2) return res.json({ items: [] });
+  const p = getPatch(req);
+  p.itemTables ??= loadItemTables(p.paths.cacheDir);
+  const tables = p.itemTables;
+  if (!tables) return res.json({ items: [] });
+  const icons = p.iconMap ?? patches.get(DEFAULT_PATCH_ID).iconMap;
+  const classId = CLASS_IDS[detectSpec(String(req.body?.profile ?? '')).class] ?? null;
+  const out = [];
+  for (const [id, it] of tables.items) {
+    // quality 2-5 (Uncommon..Legendary): skips junk/vendor trash below and
+    // Heirloom/Artifact (6/7, scale-with-level or event items) above.
+    if (!it.name || it.quality < 2 || it.quality > 5 || !it.name.toLowerCase().includes(q)) continue;
+    if (/\b(template|test item|placeholder)\b/i.test(it.name)) continue; // dev/QA scaffolding, not real loot
+    const c = tables.classes.get(id);
+    if (!c || (c.cls !== 2 && c.cls !== 4)) continue; // weapons + armor only
+    if (c.cls === 4 && c.sub === 5) continue; // cosmetic armor
+    const slots = INV_SLOTS[it.invType];
+    if (!slots) continue;
+    // "usable": armor type / weapon proficiency / class lock, same checks
+    // usableSlots() applies to loot-table candidates elsewhere in the app.
+    if (classId) {
+      if (it.allowableClass !== -1 && !(it.allowableClass & (1 << (classId - 1)))) continue;
+      if (c.cls === 4 && c.sub >= 1 && c.sub <= 4 && ARMOR_TYPE[classId] !== c.sub) continue;
+      if (c.cls === 2 && !(WEAPONS[classId] ?? []).includes(c.sub)) continue;
+    }
+    out.push({
+      id, name: it.name, quality: it.quality, invType: it.invType, slot: slots[0],
+      icon: icons?.get(id) ?? null,
+      requiredLevel: it.requiredLevel > 1 ? it.requiredLevel : null,
+    });
+  }
+  out.sort((a, b) => b.quality - a.quality || a.name.localeCompare(b.name));
+  res.json({ items: out.slice(0, 30), truncated: out.length > 30 });
 });
 
 app.get('/api/icons', (req, res) => {

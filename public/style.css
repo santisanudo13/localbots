@@ -316,6 +316,49 @@ button.mini {
 .ilvl.upgraded { color: var(--accent); }
 #gear-list .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
 
+/* --- item search (Top Gear: add any item, at any item level) --- */
+.item-search-box input[type="search"] {
+  width: 100%;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 14px;
+}
+#item-search-results {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 6px 0 10px;
+  background: var(--panel-2);
+}
+#item-search-results .empty { color: var(--muted); font-size: 13px; padding: 8px 10px; }
+button.search-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 6px 10px;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+button.search-result:last-child { border-bottom: none; }
+button.search-result:hover { background: var(--panel); }
+button.search-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 0 2px;
+  cursor: pointer;
+}
+button.search-remove:hover { color: var(--red); }
+
 /* --- top gear results --- */
 #tg-baseline {
   font-size: 34px;

@@ -13,7 +13,7 @@ export const CLASS_IDS = {
 };
 
 // class id -> armor subclass (1 cloth, 2 leather, 3 mail, 4 plate)
-const ARMOR_TYPE = { 1: 4, 2: 4, 6: 4, 3: 3, 7: 3, 13: 3, 4: 2, 10: 2, 11: 2, 12: 2, 5: 1, 8: 1, 9: 1 };
+export const ARMOR_TYPE = { 1: 4, 2: 4, 6: 4, 3: 3, 7: 3, 13: 3, 4: 2, 10: 2, 11: 2, 12: 2, 5: 1, 8: 1, 9: 1 };
 
 // primary stat per spec key ("class_spec"), stat ids: 3 agi, 4 str, 5 int
 const SPEC_PRIMARY = {
@@ -45,7 +45,7 @@ const STAT_GRANTS = {
 // weapon subclasses per class id
 // 0 axe1h 1 axe2h 2 bow 3 gun 4 mace1h 5 mace2h 6 polearm 7 sword1h 8 sword2h
 // 9 warglaive 10 staff 13 fist 15 dagger 18 crossbow 19 wand
-const WEAPONS = {
+export const WEAPONS = {
   1: [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 15, 18],
   2: [0, 1, 4, 5, 6, 7, 8],
   3: [0, 1, 2, 3, 6, 7, 8, 10, 13, 15, 18],
