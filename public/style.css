@@ -108,32 +108,84 @@ header h1 {
 .dot-outdated { background: #f2a13b; box-shadow: 0 0 6px rgba(242, 161, 59, 0.75); }
 .dot-unknown { background: var(--muted); }
 
+/* Single full-width scrolling page for setup/results/history, Raidbots-style,
+   rather than a cramped fixed sidebar next to results. */
 main {
-  display: grid;
-  grid-template-columns: minmax(340px, 480px) 1fr;
-  gap: 18px;
-  padding: 18px 22px;
-  max-width: 1400px;
+  padding: 18px 22px 96px; /* bottom padding clears the fixed sim-bar */
+  max-width: 1100px;
   margin: 0 auto;
-}
-@media (max-width: 900px) {
-  main { grid-template-columns: 1fr; }
 }
 
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 18px;
+  padding: 18px 24px;
 }
 .panel h2 {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--muted);
-  margin: 18px 0 8px;
+  margin: 28px 0 10px;
+  scroll-margin-top: 96px; /* clears the sticky header + quick-nav on anchor jump */
 }
 .panel h2:first-child { margin-top: 0; }
+
+/* --- Quick Nav: jump between the setup page's long sections --- */
+.quick-nav {
+  position: sticky;
+  top: 49px; /* sits right under the header */
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 22px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.quick-nav-label { color: var(--muted); font-size: 12px; margin-right: 4px; }
+.quick-nav-link {
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.quick-nav-link:hover { color: var(--text); border-color: var(--accent-dim); }
+
+/* --- sticky bottom action bar: always-visible Sim it button + live count,
+   so submitting a long setup page never needs scrolling back to the top --- */
+.sim-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 12px 22px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+}
+.sim-bar-status { color: var(--muted); font-size: 13px; margin-right: auto; }
+
+/* --- results page: full-width, separate from setup (Raidbots-style report page) --- */
+.results-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.results-char-card:empty { display: none; }
 
 .hint { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
 code {

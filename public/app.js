@@ -611,16 +611,39 @@ async function pollSimcUpdate() {
   } catch { /* next page load re-checks */ }
 }
 
-// ---------- pages (New sim / History) ----------
+// ---------- views (setup / history / results) ----------
+// Raidbots-style flow: the sim options live on one full-width scrolling page
+// (setup), and hitting Sim it navigates away to a dedicated results page --
+// not a side-by-side panel. "History" is its own page the same way; clicking
+// a saved entry opens it in the results view, same as a fresh run's report.
+let view = 'setup';
+function showView(next) {
+  view = next;
+  document.querySelector('.input-panel').classList.toggle('hidden', view !== 'setup');
+  $('quick-nav').classList.toggle('hidden', view !== 'setup');
+  $('sim-bar').classList.toggle('hidden', view !== 'setup');
+  $('history-panel').classList.toggle('hidden', view !== 'history');
+  $('results-panel').classList.toggle('hidden', view !== 'results');
+  const activePage = view === 'history' ? 'history' : 'sim'; // setup & results both map to the "New sim" tab
+  document.querySelectorAll('.page-btn').forEach((b) =>
+    b.classList.toggle('active', b.dataset.page === activePage));
+  if (view === 'results') {
+    // same identity block as the setup screen's Armory import, so the
+    // character stays visually anchored across the setup -> results jump
+    $('results-char-card').innerHTML = $('char-card').classList.contains('hidden') ? '' : $('char-card').innerHTML;
+  }
+  window.scrollTo({ top: 0 });
+}
+
 document.querySelectorAll('.page-btn').forEach((btn) => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.page-btn').forEach((b) => b.classList.toggle('active', b === btn));
-    const page = btn.dataset.page;
-    document.querySelector('.input-panel').classList.toggle('hidden', page !== 'sim');
-    $('history-panel').classList.toggle('hidden', page !== 'history');
+    const page = btn.dataset.page; // "sim" | "history"
+    showView(page === 'sim' ? 'setup' : page);
     if (page === 'history') loadHistory();
   });
 });
+
+$('back-to-setup').addEventListener('click', () => showView('setup'));
 
 async function loadHistory() {
   $('history-list').innerHTML = '<p class="empty">Loading…</p>';
@@ -700,6 +723,7 @@ async function viewHistoryEntry(id) {
   }
   document.querySelectorAll('.history-entry').forEach((el) =>
     el.classList.toggle('active', el.dataset.hist === id));
+  showView('results');
   $('empty-state').classList.add('hidden');
   $('progress-area').classList.add('hidden');
   $('results-area').classList.add('hidden');
@@ -757,7 +781,10 @@ document.querySelectorAll('.tab').forEach((tab) => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
     $('gear-section').classList.toggle('hidden', mode !== 'topgear');
     $('dropt-section').classList.toggle('hidden', mode !== 'droptimizer');
+    $('quick-nav-gear').classList.toggle('hidden', mode !== 'topgear');
+    $('quick-nav-loot').classList.toggle('hidden', mode !== 'droptimizer');
     $('sim-button').textContent = SIM_LABELS[mode];
+    $('sim-bar-status').textContent = '';
     if (mode === 'topgear') refreshGearList();
     if (mode === 'droptimizer') refreshDroptimizer();
   });
@@ -937,6 +964,9 @@ function updateGearCount() {
   $('gear-count').textContent = boxes.length
     ? `${boxes.filter((b) => b.checked).length} of ${boxes.length} selected`
     : '';
+  // mirrored into the sticky sim bar so the running total stays visible no
+  // matter how far down this (now full-page) gear list the user has scrolled
+  if (mode === 'topgear') $('sim-bar-status').textContent = $('gear-count').textContent;
 }
 
 // One synthetic "Catalyzed" candidate per non-crafted item that's in a
@@ -1677,6 +1707,7 @@ async function startSim() {
     ? `${body.skippedByHands} off-hand item${body.skippedByHands === 1 ? '' : 's'} skipped — a two-hander fills both hands.`
     : '';
   $('cancel-button').classList.remove('hidden');
+  showView('results');
   $('history-banner').classList.add('hidden');
   $('empty-state').classList.add('hidden');
   $('results-area').classList.add('hidden');
@@ -2015,8 +2046,8 @@ function rowHtml(t, maxAbs) {
         <span class="slot-tag">→ ${target}</span>${caret}
         ${itemId ? enchGemSubline(eq?.enchantId, eq?.gemIds) : ''}</span></span></td>
     <td><span class="source-tag">${esc(t.section)}</span>${t.boss ? `<span class="src-boss">→ ${esc(t.boss)}</span>` : ''}</td>
-    <td class="num">${Math.round(t.dps).toLocaleString()}</td>
-    <td class="num ${cls}">${sign}${Math.round(t.delta).toLocaleString()}</td>
+    <td class="num" title="Mean ${Math.round(t.dps).toLocaleString()} DPS ± ${Math.round(t.error).toLocaleString()} (margin of error)">${Math.round(t.dps).toLocaleString()}</td>
+    <td class="num ${cls}" title="${sign}${Math.round(t.delta).toLocaleString()} DPS ± ${Math.round(t.error).toLocaleString()} margin of error vs equipped">${sign}${Math.round(t.delta).toLocaleString()}</td>
     <td><div class="share-bar">
       <div class="track"><div class="fill" style="width:${fill.toFixed(1)}%; background:${t.delta >= 0 ? 'var(--green)' : 'var(--red)'}"></div></div>
       <span class="pct ${cls}">${sign}${t.deltaPct.toFixed(2)}%</span>
