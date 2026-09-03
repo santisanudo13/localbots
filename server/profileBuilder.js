@@ -194,6 +194,12 @@ export function buildTopGearInput(profileText, options, items, setCtx = null, ge
     return ((setCounts[replacedSet] ?? 0) - 1) < min && (setCounts[replacedSet] ?? 0) >= min;
   };
 
+  // One-handers and off-hands ticked at the same time also get simmed as a
+  // pair, since a real regear usually swaps both hands together rather than
+  // one at a time against whatever is currently equipped in the other.
+  const oneHandMains = [];
+  const offHands = [];
+
   for (const [index, item] of items.entries()) {
     const slotMatch = String(item.line ?? '').trim().match(/^([a-z_0-9]+)=(.*)$/);
     if (!slotMatch) continue;
@@ -240,8 +246,37 @@ export function buildTopGearInput(profileText, options, items, setCtx = null, ge
         placement,
         section: item.section ?? 'Bags',
       };
+      if (placement === 'main_hand' && !isTwoHander) {
+        oneHandMains.push({ itemName: item.name ?? null, itemId, rest, upgraded, ilvl: upgraded ? item.targetIlvl : (item.ilvl ?? null), origIlvl: item.ilvl ?? null, index, section: item.section ?? 'Bags' });
+      } else if (placement === 'off_hand') {
+        offHands.push({ itemName: item.name ?? null, itemId, rest, upgraded, ilvl: upgraded ? item.targetIlvl : (item.ilvl ?? null), origIlvl: item.ilvl ?? null, index, section: item.section ?? 'Bags' });
+      }
     }
   }
+
+  for (const mh of oneHandMains) {
+    for (const oh of offHands) {
+      if (breaksSetMinimum(mh.itemId, 'main_hand') || breaksSetMinimum(oh.itemId, 'off_hand')) { skippedBySets++; continue; }
+      let name = sanitizeSetName(`${mh.itemName ?? 'main hand'} + ${oh.itemName ?? 'off hand'} @weapons`);
+      let n = 2;
+      while (usedNames.has(name)) name = sanitizeSetName(`${mh.itemName} + ${oh.itemName} #${n++} @weapons`);
+      usedNames.add(name);
+      lines.push(`profileset."${name}"=main_hand=${mh.rest}`);
+      lines.push(`profileset."${name}"+=off_hand=${oh.rest}`);
+      sets[name] = {
+        group: `${mh.index}+${oh.index}`,
+        itemName: `${mh.itemName ?? '?'} + ${oh.itemName ?? '?'}`,
+        weaponPair: {
+          mainHand: { itemId: mh.itemId, itemName: mh.itemName, ilvl: mh.ilvl, origIlvl: mh.origIlvl },
+          offHand: { itemId: oh.itemId, itemName: oh.itemName, ilvl: oh.ilvl, origIlvl: oh.origIlvl },
+        },
+        slot: 'weapons',
+        placement: 'weapons',
+        section: mh.section === oh.section ? mh.section : 'Bags',
+      };
+    }
+  }
+
   return { input: lines.join('\n') + '\n', sets, skippedBySets, skippedByHands, skippedAsWorn };
 }
 

@@ -16,9 +16,14 @@
       <button class="page-btn" data-page="history">History</button>
     </nav>
     <nav class="patch-switch" id="patch-switch"></nav>
+    <nav class="lang-switch" id="lang-switch"></nav>
     <span id="status-bar">
       <span class="status-chip" id="status-app"><span class="dot dot-unknown"></span><span class="chip-text">Localbots</span></span>
       <span class="status-chip" id="status-simc"><span class="dot dot-unknown"></span><span class="chip-text">Simc</span></span>
+    </span>
+    <span class="header-actions">
+      <button id="sim-button" class="primary">Sim it</button>
+      <button id="cancel-button" class="danger hidden">Cancel</button>
     </span>
   </header>
 
@@ -129,6 +134,10 @@
       </div>
 
       <div id="gear-section" class="hidden">
+        <h2>Filter Sim by Slot</h2>
+        <p class="hint">Click one or more slots to tick only their items below; click a highlighted
+          slot again to drop it, or clear them all to show every slot.</p>
+        <div id="gear-slot-filter" class="chip-row"></div>
         <h2>Items to compare</h2>
         <p class="hint">Gear found in your bags (and vault choices) inside the export.
           Each ticked item is simmed in place of what you have equipped.</p>
@@ -231,10 +240,6 @@
           recommended; expect several minutes.</p>
       </div>
 
-      <div class="actions">
-        <button id="sim-button" class="primary">Sim it</button>
-        <button id="cancel-button" class="danger hidden">Cancel</button>
-      </div>
       <p id="error-box" class="error hidden"></p>
     </section>
 
@@ -271,11 +276,12 @@
           <div id="tg-slot-chips"></div>
         </div>
         <div class="result-tabs">
-          <button class="result-tab active" data-restab="details">Details</button>
+          <button class="result-tab active" data-restab="gear">Your Top Gear</button>
           <button class="result-tab" data-restab="best">Best setup</button>
         </div>
+        <div id="tg-gear" class="hidden"></div>
         <div id="best-setup" class="hidden"></div>
-        <table id="topgear-table">
+        <table id="topgear-table" class="hidden">
           <thead>
             <tr><th>Item</th><th>Source</th><th class="num">DPS</th><th class="num">Change</th><th class="share-col">vs equipped</th></tr>
           </thead>
