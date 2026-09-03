@@ -37,6 +37,23 @@ function iconImg(itemId, iconFileId) {
   return `<img class="tile" alt="" src="${ICON_CDN}/${encodeURIComponent(iconFileId)}.jpg">`;
 }
 
+// Small flask badge over an item's icon: this row shows the real Catalyst
+// output item (t.itemId/itemName already are the tier piece's, not the
+// looted item's — see profileBuilder.js), and the badge is what makes that
+// visible at a glance without reading the row's text.
+function catalystBadge(t, fromName) {
+  if (!t.catalysed) return '';
+  const title = `Catalyzed${fromName ? ` from ${fromName}` : ''} — shown as the tier piece it becomes, not the looted item`;
+  return `<span class="catalyst-badge" title="${esc(title)}">
+    <svg viewBox="0 0 24 24" width="10" height="10"><path d="M9 2v6.3L3.4 19a2 2 0 0 0 1.8 3h13.6a2 2 0 0 0 1.8-3L15 8.3V2M9 2h6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>
+  </span>`;
+}
+
+function iconTile(itemId, iconFileId, t) {
+  const img = iconImg(itemId, iconFileId);
+  return t?.catalysed ? `<span class="tile-wrap">${img}${catalystBadge(t, t.catalystFromName)}</span>` : img;
+}
+
 function settingsLine(entry) {
   const o = entry.options ?? {};
   const r = entry.result ?? {};
@@ -61,12 +78,14 @@ function comparisonTable(rows, icons) {
       ? `<span class="muted">(${esc(t.origIlvl)} → ${esc(t.ilvl)})</span>`
       : t.ilvl ? `<span class="muted">(${esc(t.ilvl)})</span>` : '';
     const tags = [
-      t.catalysed ? '<span class="tag">catalysed</span>' : '',
+      t.catalysed
+        ? `<span class="tag" title="Catalyzed${t.catalystFromName ? ` from ${esc(t.catalystFromName)}` : ''}">catalyzed</span>`
+        : '',
       t.offHandLost ? '<span class="tag muted-tag">off-hand removed</span>' : '',
     ].join('');
     const source = [t.section, t.boss].filter(Boolean).map(esc).join(' → ');
     return `<tr>
-      <td class="item">${iconImg(t.itemId, icons?.[t.itemId])}<span>${esc(t.itemName ?? '?')} ${ilvl}${tags}
+      <td class="item">${iconTile(t.itemId, icons?.[t.itemId], t)}<span>${esc(t.itemName ?? '?')} ${ilvl}${tags}
         <span class="muted block">→ ${esc(prettySlot(t.placement))}</span></span></td>
       <td>${source}</td>
       <td class="num">${num(t.dps)}</td>
@@ -194,6 +213,12 @@ export function buildReportHtml(entry, { icons = null, consumableLabels = null, 
   .item { display:flex; align-items:center; gap:9px; }
   .tile { width:28px; height:28px; border-radius:5px; border:1px solid var(--border); flex:none; }
   .tile.blank { display:inline-block; background:var(--panel2); }
+  .tile-wrap { position:relative; display:inline-flex; flex:none; }
+  .catalyst-badge {
+    position:absolute; right:-4px; bottom:-4px; width:14px; height:14px;
+    display:flex; align-items:center; justify-content:center; border-radius:50%;
+    background:var(--accent); color:#1a1405; border:1.5px solid var(--bg);
+  }
   .bar { display:flex; align-items:center; gap:9px; }
   .bar-track { flex:1; height:7px; background:var(--panel2); border-radius:4px; overflow:hidden; }
   .bar-fill { height:100%; background:var(--bar); }

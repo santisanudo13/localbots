@@ -161,6 +161,11 @@ function hasConsumableLine(text, key) {
 // fills both hands, so an off-hand cannot be tried next to one, and putting a
 // two-hander on someone holding an off-hand has to take that off-hand off --
 // simc equips both happily and would credit the two-hander with its stats.
+// A candidate item carrying redirected_base_stats= (the "Catalyzed" entries
+// the gear list synthesizes when the Catalyze toggle is on — see app.js's
+// catalystEntriesFor — or an already-catalyzed item straight from the export)
+// is flagged catalysed for the result row's badge, same as itemStats.js's
+// statSourceId reads that field for the item's own tooltip.
 export function buildTopGearInput(profileText, options, items, setCtx = null, gear = null) {
   const base = buildInput(profileText, options);
   const lines = [base];
@@ -206,6 +211,7 @@ export function buildTopGearInput(profileText, options, items, setCtx = null, ge
       rest += `,ilevel=${item.targetIlvl}`;
     }
     const isTwoHander = gear?.invTypeOf && itemId ? gear.invTypeOf(itemId) === TWO_HAND_INV : false;
+    const ilvl = upgraded ? item.targetIlvl : (item.ilvl ?? null);
     for (const placement of placementsFor(slotMatch[1])) {
       if (breaksSetMinimum(itemId, placement)) { skippedBySets++; continue; }
       if (placement === 'off_hand' && noOffHand(gear, specKey)) { skippedByHands++; continue; }
@@ -218,13 +224,17 @@ export function buildTopGearInput(profileText, options, items, setCtx = null, ge
       usedNames.add(name);
       lines.push(`profileset."${name}"=${placement}=${rest}`);
       if (offHandLost) lines.push(`profileset."${name}"+=off_hand=`);
+      const catalystFromId = Number(rest.match(/(?:^|,)redirected_base_stats=(\d+)/)?.[1]) || null;
       sets[name] = {
         group: index, // one group per source item, across its placements
         ...(offHandLost ? { offHandLost: true } : {}),
+        ...(catalystFromId
+          ? { catalysed: true, catalystFromId, catalystFromName: item.catalystFrom ?? null }
+          : {}),
         itemName: item.name ?? null,
         itemId,
         ...(item.track ? { track: item.track } : {}), // decoded, never guessed
-        ilvl: upgraded ? item.targetIlvl : (item.ilvl ?? null),
+        ilvl,
         origIlvl: item.ilvl ?? null,
         slot: slotMatch[1],
         placement,

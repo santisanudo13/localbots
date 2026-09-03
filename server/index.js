@@ -10,13 +10,13 @@ import { parseGear, GEAR_SLOTS } from './gearParser.js';
 import { loadLootDb, buildLootDb, downloadTables, cacheStatus, loadItemSetMap, loadBonusUpgradeMap, loadSocketBonusIds, patchPaths } from './wagoData.js';
 import { buildSourceTree, buildDroptimizerInput, tierSetSummary, weaponSetup, seasonConfig as fullSeasonConfig } from './droptimizer.js';
 import { probeKnownItems, loadProbeCache } from './simcProbe.js';
-import { CLASS_IDS } from './lootFilter.js';
+import { CLASS_IDS, INV_SLOTS } from './lootFilter.js';
 import { saveHistoryEntry, listHistory, getHistoryEntry, deleteHistoryEntry } from './history.js';
 import { buildReportHtml, reportFilename } from './report.js';
 import { updateStatus } from './status.js';
 import { parseLoadouts, buildLoadoutVariants } from './talents.js';
 import { loadTraitData, decodeTalents, talentLayout, clearTraitCache } from './talentData.js';
-import { loadSetBonusNames } from './setBonus.js';
+import { loadSetBonusNames, loadCatalystSets } from './setBonus.js';
 import { detectSimcSource, startSimcUpdate } from './simcUpdater.js';
 import { invalidateStatus } from './status.js';
 import { fetchCharacter, buildProfile as buildArmoryProfile } from './armory.js';
@@ -290,6 +290,26 @@ function invTypeLookup(p) {
   p.itemTables ??= loadItemTables(p.paths.cacheDir);
   const items = p.itemTables?.items;
   return items ? (id) => items.get(Number(id))?.invType ?? null : null;
+}
+
+// { bySlot } mapping each catalyst-eligible slot (head/shoulder/chest/hands/
+// legs) to the character's class's real current tier piece for it — { id,
+// name } — so the gear list's "Catalyzed" section (app.js) can offer the
+// real item each ticked looted piece becomes. null when the class's tier set
+// (see setBonus.js) or item names aren't available (simc built from a
+// release archive, not from source).
+function buildCatalystCtx(profileText, p) {
+  const classId = CLASS_IDS[detectSpec(profileText).class];
+  const classSet = classId ? loadCatalystSets(simcPath, p.def.ptr)?.get(classId) : null;
+  if (!classSet) return null;
+  const invTypeOf = invTypeLookup(p);
+  if (!invTypeOf) return null;
+  const bySlot = {};
+  for (const id of classSet.itemIds) {
+    const slot = INV_SLOTS[invTypeOf(id)]?.[0];
+    if (slot) bySlot[slot] = { id, name: p.itemTables?.items?.get(id)?.name ?? null };
+  }
+  return Object.keys(bySlot).length ? { bySlot } : null;
 }
 
 function ensureProbe(p, profileText) {
@@ -640,6 +660,10 @@ app.post('/api/gear', async (req, res) => {
     itemSets: detectItemSets(equipped, items, p.itemSetMap ?? patches.get(DEFAULT_PATCH_ID).itemSetMap),
     loadouts: parseLoadouts(profile).loadouts.map((l) => ({ name: l.name, isActive: l.isActive })),
     talents: talentPayload(profile, p, customLoadouts),
+    // slot -> this class's real current tier piece, for the gear list's
+    // "Catalyzed" section (see buildCatalystCtx) — null slots mean the class's
+    // tier set (or this simc build's own generated data) isn't known.
+    catalystSlots: buildCatalystCtx(profile, p)?.bySlot ?? null,
   };
   if (resolveIlvls) {
     if (!p.available) {
@@ -846,6 +870,9 @@ function validateItems(items) {
       section: String(it?.section ?? 'Bags').slice(0, 60),
       slot: m[1],
       line,
+      // the looted item's name, for a "Catalyzed" row's tooltip (see the
+      // gear list's catalystEntriesFor) — display text only, never parsed
+      ...(it?.catalystFrom ? { catalystFrom: String(it.catalystFrom).slice(0, 120) } : {}),
     });
   }
   return out;
