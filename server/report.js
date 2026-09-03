@@ -342,7 +342,7 @@ export function buildReportHtml(entry, {
   td.pctcell { width:34%; min-width:170px; }
   .pos { color:var(--green); } .neg { color:var(--red); } .zero { color:var(--muted); }
   .item { display:flex; align-items:center; gap:9px; }
-  .tile { width:28px; height:28px; border-radius:5px; border:1px solid var(--border); flex:none; }
+  .tile { width:40px; height:40px; border-radius:6px; border:1px solid var(--border); flex:none; }
   .tile.blank { display:inline-block; background:var(--panel2); }
   .tile-wrap { position:relative; display:inline-flex; flex:none; }
   .catalyst-badge {
