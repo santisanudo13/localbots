@@ -881,7 +881,9 @@ $('dropt-upgrade').addEventListener('change', () => {
 });
 
 function setAllGear(checked) {
-  document.querySelectorAll('#gear-list input').forEach((cb) => { cb.checked = checked; });
+  // equipped items are locked on (see refreshGearList) — always the baseline
+  // everything else is compared against, never a real toggle
+  document.querySelectorAll('#gear-list input:not(:disabled)').forEach((cb) => { cb.checked = checked; });
   updateGearCount();
 }
 
@@ -890,7 +892,7 @@ function setAllGear(checked) {
 // Slot" multi-select above the list (one or more), which stay in sync.
 function soloGearSlots(slots) {
   const wanted = new Set(slots);
-  document.querySelectorAll('#gear-list input[data-gear-index]').forEach((cb) => {
+  document.querySelectorAll('#gear-list input[data-gear-index]:not(:disabled)').forEach((cb) => {
     const it = gearItems[Number(cb.dataset.gearIndex)];
     cb.checked = !!it && wanted.has(it.slot);
   });
@@ -945,8 +947,7 @@ function applyMaxAffordableUpgrades() {
     if (sel && [...sel.options].some((o) => o.value === String(item.targetIlvl ?? ''))) {
       sel.value = String(item.targetIlvl ?? '');
     }
-    // an item worth upgrading is worth simming, so tick it — equipped rows
-    // start unticked precisely so this is the thing that turns them on
+    // bag items start unticked; an item worth upgrading is worth simming
     if (item.targetIlvl) {
       const box = document.querySelector(`#gear-list input[data-gear-index="${i}"]`);
       if (box) box.checked = true;
@@ -1077,14 +1078,20 @@ async function refreshGearList() {
               ? { track: item.track, trackStep: item.stepIdx + 1, trackMax: season.tracks[item.track].length }
               : {}),
           };
+          // The sim always simmed your equipped gear as the baseline anyway
+          // (buildInput never touches it, buildTopGearInput skips a no-op
+          // "replace X with X" candidate for an un-upgraded one — see its
+          // skippedAsWorn) — so an equipped item is always ticked and locked
+          // rather than offering a toggle that either does nothing or would
+          // silently drop the baseline everything else compares against.
+          const equipped = item.section === 'Equipped';
           return `
-      <label class="gear-card">
-        <input type="checkbox" class="gear-card-check" data-gear-index="${i}"
-          ${item.section === 'Equipped' ? '' : 'checked'}>
+      <label class="gear-card${equipped ? ' locked' : ''}" ${equipped ? 'title="Currently equipped — always simmed as the baseline every candidate is compared against"' : ''}>
+        <input type="checkbox" class="gear-card-check" data-gear-index="${i}" checked ${equipped ? 'disabled' : ''}>
         <span class="gear-card-icon" ${tileDataAttrs(item.id, info)}>${itemTileWithBadge(item.id, info, item)}</span>
         <span class="gear-card-body">
           <span class="gear-card-name">${esc(item.name)}${trackTagFor(item) ? ` <span class="track-tag tier-${trackTagFor(item).toLowerCase()}">(${trackTagFor(item)})</span>` : ''}</span>
-          ${item.section !== 'Bags' ? `<span class="gear-card-section">${esc(item.section)}</span>` : ''}
+          ${item.section !== 'Bags' ? `<span class="gear-card-section">${esc(item.section)}${equipped ? ' · locked' : ''}</span>` : ''}
           ${ilvlControl(item, i)}
         </span>
         ${item.section === 'Search'

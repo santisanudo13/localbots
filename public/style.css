@@ -352,6 +352,8 @@ button.mini {
   cursor: pointer;
 }
 .gear-card:has(.gear-card-check:checked) { border-color: var(--accent); background: rgba(242, 177, 53, 0.08); }
+/* equipped gear is locked on -- always the baseline, never a real toggle */
+.gear-card.locked { cursor: default; }
 .gear-card-check { position: absolute; opacity: 0; pointer-events: none; }
 .gear-card-icon { flex: none; }
 .gear-card-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
