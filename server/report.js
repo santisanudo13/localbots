@@ -8,6 +8,12 @@
 // size would mangle, and any browser turns this into a PDF with Ctrl+P anyway.
 
 const ICON_CDN = 'https://render.worldofwarcraft.com/us/icons/56';
+// The game's own enchant data has no per-enchant icon (SpellItemEnchantment's
+// IconFileDataID is 0 on every row), which is why Raidbots' Top Gear report —
+// the reference for this UI — shows the exact same generic scroll icon next
+// to every enchant rather than a distinct one each. This is that same asset,
+// hosted by Raidbots.
+const ENCHANT_ICON_URL = 'https://www.raidbots.com/static/images/icons/56/inv_misc_enchantedscroll.png';
 
 const esc = (v) => String(v ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -67,7 +73,31 @@ function settingsLine(entry) {
   ].filter(Boolean).join(' · ');
 }
 
-function comparisonTable(rows, icons) {
+// Comparison rows for a real gear slot carry no sourceKind (a plain item, a
+// droptimizer drop, a crafted piece...); enchants/gems/consumables/folio/
+// talents/track-upgrades are alternatives within a category, not a choice of
+// what goes in a slot, so they never enter the "Your Top Gear" paperdoll.
+const NON_SLOT_KINDS = new Set(['enchants', 'gems', 'upgrades', 'folio', 'consumables', 'talents']);
+
+// slot -> the best row for it, if that row actually beats what's equipped
+// there and clears its own margin of error -- mirrors the browser's "Best
+// setup" tab (bucketFor/renderBestSetup in app.js) so the two agree.
+function bestPicksBySlot(rows) {
+  const best = new Map();
+  for (const t of rows ?? []) {
+    if (NON_SLOT_KINDS.has(t.sourceKind) || !t.placement) continue;
+    const cur = best.get(t.placement);
+    if (!cur || (Number(t.delta) || 0) > (Number(cur.delta) || 0)) best.set(t.placement, t);
+  }
+  for (const [slot, t] of best) {
+    if (/\(current\)/.test(t.itemName ?? '') || !((Number(t.delta) || 0) > (Number(t.error) || 0))) {
+      best.delete(slot);
+    }
+  }
+  return best;
+}
+
+function comparisonTable(rows, icons, equipped, gemLabels, enchantLabels) {
   if (!rows?.length) return '';
   const maxAbs = Math.max(...rows.map((t) => Math.abs(Number(t.delta) || 0)), 1);
   const body = rows.map((t) => {
@@ -84,9 +114,13 @@ function comparisonTable(rows, icons) {
       t.offHandLost ? '<span class="tag muted-tag">off-hand removed</span>' : '',
     ].join('');
     const source = [t.section, t.boss].filter(Boolean).map(esc).join(' → ');
+    // this row's candidate is simmed with whatever's already carried in that
+    // slot (see droptimizer.js) -- same source topGearGrid's enchGemLine uses
+    const eq = equipped?.[t.placement];
     return `<tr>
       <td class="item">${iconTile(t.itemId, icons?.[t.itemId], t)}<span>${esc(t.itemName ?? '?')} ${ilvl}${tags}
-        <span class="muted block">→ ${esc(prettySlot(t.placement))}</span></span></td>
+        <span class="muted block">→ ${esc(prettySlot(t.placement))}</span>
+        ${eq ? enchGemLine(eq, gemLabels, enchantLabels, icons) : ''}</span></td>
       <td>${source}</td>
       <td class="num">${num(t.dps)}</td>
       <td class="num ${cls}">${sign}${num(delta)}</td>
@@ -94,7 +128,7 @@ function comparisonTable(rows, icons) {
         (Math.abs(delta) / maxAbs) * 100)}</td>
     </tr>`;
   }).join('');
-  return `<h2>Comparison <span class="muted">${rows.length} row${rows.length === 1 ? '' : 's'}</span></h2>
+  return `<h2>Top Gear (DPS) <span class="muted">${rows.length} row${rows.length === 1 ? '' : 's'}</span></h2>
     <table class="wide"><thead><tr>
       <th>Item</th><th>Source</th><th class="num">DPS</th><th class="num">Change</th><th>vs equipped</th>
     </tr></thead><tbody>${body}</tbody></table>`;
@@ -137,16 +171,65 @@ function buffTable(buffs) {
     <table><thead><tr><th>Buff</th><th>Uptime</th></tr></thead><tbody>${body}</tbody></table>`;
 }
 
-function gearTable(equipped, icons) {
-  const slots = Object.entries(equipped ?? {});
+// a 14px icon for the enchant/gem subline -- same CDN, same file-id space as
+// the full-size item tiles (see iconImg), just smaller and no border
+function miniIconImg(iconFileId) {
+  return iconFileId
+    ? `<img class="mini-icon" alt="" src="${ICON_CDN}/${encodeURIComponent(iconFileId)}.jpg">`
+    : '<span class="mini-icon blank"></span>';
+}
+
+// candidate items in the Comparison table carry this same slot's enchant and
+// gems (see droptimizer.js), so listing them once here — against the
+// currently-equipped item — is what every row above is actually simmed with.
+// A gem gets its own icon (a real item); the enchant gets the fixed generic
+// one (see ENCHANT_ICON_URL) -- same layout Raidbots' Top Gear report uses.
+function enchGemLine(it, gemLabels, enchantLabels, icons) {
+  const parts = [];
+  if (it.enchantId) {
+    parts.push(`<img class="mini-icon" alt="" src="${ENCHANT_ICON_URL}"> ${esc(enchantLabels?.[it.enchantId] ?? `enchant #${it.enchantId}`)}`);
+  }
+  for (const g of it.gemIds ?? []) {
+    parts.push(`${miniIconImg(icons?.[g] ?? icons?.[Number(g)])} ${esc(gemLabels?.[g] ?? gemLabels?.[Number(g)] ?? `gem #${g}`)}`);
+  }
+  return parts.length
+    ? `<span class="muted block enchgem">${parts.map((p) => `<span class="enchgem-item">${p}</span>`).join('')}</span>`
+    : '';
+}
+
+// The paperdoll at the top of the report: every slot's equipped item, unless
+// a row from the Top Gear (DPS) table below beats it (bestPicksBySlot) --
+// that slot is then highlighted and shows the winning item plus its gain,
+// the same "what changed" view Raidbots' Top Gear report leads with.
+function topGearGrid(equipped, picksBySlot, icons, qualities, gemLabels, enchantLabels) {
+  const slots = Object.keys(SLOT_LABELS).filter((s) => equipped?.[s]);
   if (!slots.length) return '';
-  const body = slots.map(([slot, it]) => `<tr>
-      <td class="muted">${esc(prettySlot(slot))}</td>
-      <td class="item">${iconImg(it.id, icons?.[it.id])}<span>${esc(it.name ?? '')}</span></td>
-      <td class="num">${it.ilvl ? esc(it.ilvl) : ''}</td>
-    </tr>`).join('');
-  return `<h2>Gear simmed</h2>
-    <table><thead><tr><th>Slot</th><th>Item</th><th class="num">ilvl</th></tr></thead><tbody>${body}</tbody></table>`;
+  const cellFor = (slot) => {
+    const eq = equipped[slot];
+    const pick = picksBySlot?.get(slot);
+    const itemId = pick ? pick.itemId : eq?.id;
+    const name = pick ? pick.itemName : eq?.name;
+    const ilvl = pick ? pick.ilvl : eq?.ilvl;
+    const q = qualities?.[itemId];
+    const nameClass = q != null ? ` q${esc(q)}` : '';
+    const gain = pick
+      ? `<span class="muted block">was ${esc(eq?.name ?? 'nothing')} <span class="pos">+${num(pick.delta)} DPS</span></span>`
+      : '';
+    return `<div class="pd-row${pick ? ' pd-changed' : ''}">
+      <div class="pd-slot muted">${esc(prettySlot(slot))}</div>
+      <div class="item">${iconTile(itemId, icons?.[itemId], pick)}<span>
+        <span class="pd-name${nameClass}">${esc(name ?? '?')}</span>${ilvl ? ` <span class="muted">(${esc(ilvl)})</span>` : ''}
+        ${pick?.catalysed ? `<span class="tag" title="Catalyzed${pick.catalystFromName ? ` from ${esc(pick.catalystFromName)}` : ''}">catalyzed</span>` : ''}
+        ${enchGemLine(eq, gemLabels, enchantLabels, icons)}${gain}</span></div>
+    </div>`;
+  };
+  const half = Math.ceil(slots.length / 2);
+  return `<h2>Your Top Gear</h2>
+    <p class="muted block">Highlighted slots beat what you have equipped — enchant &amp; gems shown for the rest carry over to every candidate in that slot below.</p>
+    <div class="pd-grid">
+      <div class="pd-col">${slots.slice(0, half).map(cellFor).join('')}</div>
+      <div class="pd-col">${slots.slice(half).map(cellFor).join('')}</div>
+    </div>`;
 }
 
 const CONSUMABLE_LABELS = {
@@ -174,11 +257,15 @@ function consumableList(consumables, labels) {
 }
 
 // icons: { [itemId]: iconFileId } — optional; without it the tiles are blank
-export function buildReportHtml(entry, { icons = null, consumableLabels = null, appUrl = 'https://github.com/balovich-matje/localbots' } = {}) {
+export function buildReportHtml(entry, {
+  icons = null, consumableLabels = null, gemLabels = null, enchantLabels = null, qualities = null,
+  appUrl = 'https://github.com/balovich-matje/localbots',
+} = {}) {
   const r = entry.result ?? {};
   const p = r.player ?? {};
   const when = new Date(entry.savedAt ?? Date.now());
   const title = `${p.name ?? 'Sim'} — ${entry.modeLabel ?? 'Localbots'}`;
+  const picksBySlot = bestPicksBySlot(r.topgear);
 
   return `<!doctype html>
 <html lang="en">
@@ -219,6 +306,10 @@ export function buildReportHtml(entry, { icons = null, consumableLabels = null, 
     display:flex; align-items:center; justify-content:center; border-radius:50%;
     background:var(--accent); color:#1a1405; border:1.5px solid var(--bg);
   }
+  .enchgem { display:flex; flex-direction:column; gap:2px; margin-top:2px; }
+  .enchgem-item { display:inline-flex; align-items:center; gap:4px; }
+  .mini-icon { width:14px; height:14px; border-radius:3px; flex:none; vertical-align:-3px; }
+  .mini-icon.blank { display:inline-block; background:var(--panel2); }
   .bar { display:flex; align-items:center; gap:9px; }
   .bar-track { flex:1; height:7px; background:var(--panel2); border-radius:4px; overflow:hidden; }
   .bar-fill { height:100%; background:var(--bar); }
@@ -227,6 +318,14 @@ export function buildReportHtml(entry, { icons = null, consumableLabels = null, 
          border-radius:10px; padding:0 6px; margin-left:5px; white-space:nowrap; }
   .tag.muted-tag { color:var(--muted); border-color:var(--border); }
   .scroll { overflow-x:auto; }
+  .pd-grid { display:grid; grid-template-columns:1fr 1fr; gap:0 24px; margin-bottom:8px; }
+  .pd-row { display:flex; align-items:center; gap:10px; padding:6px 8px; border-radius:6px; border:1px solid transparent; }
+  .pd-row.pd-changed { border-color:var(--accent); background:rgba(242,177,53,.08); }
+  .pd-slot { width:62px; flex:none; font-size:12px; }
+  .pd-name { font-weight:600; }
+  .pd-name.q1 { color:#fff; } .pd-name.q2 { color:#1eff00; } .pd-name.q3 { color:#0070dd; }
+  .pd-name.q4 { color:#a335ee; } .pd-name.q5 { color:#ff8000; }
+  @media (max-width:640px) { .pd-grid { grid-template-columns:1fr; } }
   footer { margin-top:34px; padding-top:14px; border-top:1px solid var(--border); color:var(--muted); font-size:12px; }
   footer a { color:var(--muted); }
   @media print {
@@ -252,12 +351,12 @@ export function buildReportHtml(entry, { icons = null, consumableLabels = null, 
     <p>${esc(settingsLine(entry))}</p>
   </div>
 
-  <div class="scroll">${comparisonTable(r.topgear, icons)}</div>
+  ${topGearGrid(r.equipped, picksBySlot, icons, qualities, gemLabels, enchantLabels)}
+  <div class="scroll">${comparisonTable(r.topgear, icons, r.equipped, gemLabels, enchantLabels)}</div>
   ${statWeightsTable(r.statWeights)}
   ${abilityTable(r.abilities, p.name)}
   ${buffTable(r.buffs)}
   ${consumableList(r.consumables, consumableLabels)}
-  ${gearTable(r.equipped, icons)}
 
   <footer>
     Generated by <a href="${esc(appUrl)}">Localbots</a>${r.simcVersion ? ` · SimulationCraft ${esc(r.simcVersion)}` : ''}${r.buildInfo ? ` · game build ${esc(r.buildInfo)}` : ''}
