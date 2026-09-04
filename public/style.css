@@ -614,6 +614,7 @@ button.search-remove:hover { color: var(--red); }
   letter-spacing: 0.6px;
   color: var(--accent);
 }
+#crafted-sparks-status.over-budget { color: var(--red); font-weight: 600; }
 .dropt-row {
   display: flex;
   align-items: center;

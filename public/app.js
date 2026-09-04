@@ -1867,6 +1867,10 @@ function renderDroptSources(tree, season, craftedCfg) {
         Crafted gear <span class="hint-inline">${crafted[0].usable} craftable items</span></label></h3>
       <div class="dropt-row">
         <label>ilvl <input type="number" id="dropt-crafted-ilvl" value="${craftedCfg?.maxIlvl ?? 285}" min="200" max="320"></label>
+        <label title="How many Sparks (or equivalent crafting currency) you actually have -- crafting a new item spends one, regardless of which stat combo you pick at the table. Leave blank if you don't want to track it.">
+          Sparks available <input type="number" id="dropt-crafted-sparks" min="0" placeholder="?">
+        </label>
+        <span class="hint-inline" id="crafted-sparks-status"></span>
       </div>
       <div class="dropt-row" id="crafted-pairs">
         <span class="hint-inline">Preferred Stats:</span>
@@ -1915,6 +1919,7 @@ function renderDroptSources(tree, season, craftedCfg) {
   $('dropt-sources').innerHTML = html.join('');
   paintItemIcons($('dropt-sources'));
   loadWowheadWidget().then(refreshWowheadLinks);
+  updateCraftedSparksStatus();
 
   // Group on/off toggles: on checks everything in the section, off unchecks it.
   document.querySelectorAll('#dropt-sources .group-toggle').forEach((toggle) => {
@@ -1938,7 +1943,7 @@ function renderDroptSources(tree, season, craftedCfg) {
       const row = ev.target.closest('.dropt-item');
       if (!row || ev.target.closest('a') || ev.target.matches('input')) return;
       const cb = row.querySelector('input[data-exclitem]');
-      if (cb && !cb.disabled) cb.checked = !cb.checked;
+      if (cb && !cb.disabled) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', { bubbles: true })); }
     });
 
     // A raid's item list shows the ilvl(s) of whichever difficulties are
@@ -1981,6 +1986,17 @@ function renderDroptSources(tree, season, craftedCfg) {
       });
     });
 
+    // Crafting a new item spends one Spark (or equivalent currency) no matter
+    // which stat combo you roll at the table -- so the budget is the count of
+    // distinct crafted items ticked, not multiplied by how many stat combos
+    // are selected above. Purely informational: it warns rather than silently
+    // dropping items, since which ones to cut is the player's call.
+    $('dropt-sources').addEventListener('change', (ev) => {
+      if (!ev.target.matches('#dropt-crafted-sparks') && !ev.target.matches('[data-group="crafted"] input[data-exclitem]')
+        && ev.target.id !== 'dropt-crafted') return;
+      updateCraftedSparksStatus();
+    });
+
     // "Preferred Stats" must always keep at least one combo ticked -- there's
     // no sensible "sim nothing" state here, so refuse to uncheck the last one.
     $('dropt-sources').addEventListener('change', (ev) => {
@@ -2001,6 +2017,25 @@ function renderDroptSources(tree, season, craftedCfg) {
       });
     });
   });
+}
+
+// Crafting a new item spends one Spark (or the season's equivalent crafting
+// currency), same as simming it for comparison spends none -- so whatever
+// count of DISTINCT crafted items is ticked here is what you'd actually need
+// to be able to craft. Warns instead of capping automatically: which items
+// to drop if you're over budget is a judgment call only the player can make.
+function updateCraftedSparksStatus() {
+  const status = $('crafted-sparks-status');
+  if (!status) return;
+  const sparks = $('dropt-crafted-sparks')?.value;
+  if (!$('dropt-crafted')?.checked || sparks === '' || sparks == null) { status.textContent = ''; return; }
+  const budget = Number(sparks) || 0;
+  const picked = document.querySelectorAll('[data-group="crafted"] input[data-exclitem]:checked').length;
+  status.textContent = `${picked}/${budget} crafts selected`;
+  status.classList.toggle('over-budget', picked > budget);
+  status.title = picked > budget
+    ? 'You have fewer Sparks than crafted items selected — untick some in the list below, or you won\'t actually be able to craft all the winners this suggests.'
+    : '';
 }
 
 function collectDroptSelection() {
