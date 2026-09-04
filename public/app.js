@@ -2829,12 +2829,24 @@ function renderBestSetup() {
     return;
   }
   const total = picks.reduce((n, p) => n + p.row.delta, 0);
+  // "Best setup" combines the single best pick per slot with no regard for
+  // whether several of those picks are crafted items -- crafting each one
+  // spends a Spark, so this combo can call for more crafts than you can
+  // actually afford at once. Best-effort only: the Sparks budget lives in
+  // the droptimizer setup form on this same page, so it's unknown once you
+  // load a saved report from history.
+  const craftedItemIds = new Set(picks.filter((p) => p.row.sourceKind === 'crafted').map((p) => p.row.itemId));
+  const sparksBudget = Number($('dropt-crafted-sparks')?.value);
+  const sparksWarning = craftedItemIds.size > 1 && Number.isFinite(sparksBudget) && sparksBudget > 0 && craftedItemIds.size > sparksBudget
+    ? `<p class="hint bs-sparks-warning">⚠️ This combo includes ${craftedItemIds.size} different crafted items, but you said you only have ${sparksBudget} Spark${sparksBudget === 1 ? '' : 's'} available — you can't craft all of them at once. Treat the crafted rows below as "best per slot", not something to do together; craft whichever has the biggest gain first.</p>`
+    : '';
   el.innerHTML = `
     <div class="bs-head">
       <span class="bs-total">+${Math.round(total).toLocaleString()} DPS</span>
       <span class="hint">estimated if you make all ${picks.length} change${picks.length === 1 ? '' : 's'}
         (${(total / (tgRows[0]?.dps - tgRows[0]?.delta || 1) * 100).toFixed(1)}%)</span>
     </div>
+    ${sparksWarning}
     <ul class="bs-list">
       ${picks.map((p) => {
     const t = p.row;
