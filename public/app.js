@@ -2779,6 +2779,9 @@ function bestGearPicksBySlot() {
   for (const [slot, t] of [...best]) {
     if (/\(current\)/.test(t.itemName ?? '') || !(t.delta > t.error)) best.delete(slot);
   }
+  const { kept, dropped } = affordableCraftedRows([...best.values()]);
+  for (const [slot, t] of [...best]) if (!kept.has(t)) best.delete(slot);
+  best.sparksDropped = dropped; // stashed for the caller's note -- Maps ignore extra props otherwise
   return best;
 }
 const NON_SLOT_KINDS = new Set(['enchants', 'gems', 'upgrades', 'folio', 'consumables', 'talents']);
@@ -2787,22 +2790,46 @@ const NON_SLOT_KINDS = new Set(['enchants', 'gems', 'upgrades', 'folio', 'consum
 // single best row per slot, with no regard for whether several of those
 // picks are crafted items competing for the same limited Sparks. A normal
 // piece costs 2 Sparks of Tides, a two-hander 4 (server-computed sparkCost
-// -- see droptimizer.js's addCrafted). Cost is summed per distinct item id,
-// since the same crafted ring/trinket can legitimately fill two slots for
-// one Spark. Best-effort only: the budget is unknown for a report reloaded
-// from history that predates this field.
-function sparksWarningHtml(rows) {
-  const crafted = new Map(); // itemId -> cost
-  for (const t of rows) {
-    if (t.sourceKind === 'crafted' && t.itemId != null && !crafted.has(t.itemId)) {
-      crafted.set(t.itemId, t.sparkCost ?? 2);
+// -- see droptimizer.js's addCrafted/addItem). Rather than just warn, this
+// solves the 0/1 knapsack (cost = sparkCost, value = delta) over the
+// crafted picks to find which subset is actually affordable together and
+// worth the most DPS -- a slot whose crafted pick didn't make the cut
+// simply isn't included, so that slot falls back to whatever it already
+// shows (current gear). Non-crafted picks are free and always kept.
+// Two slots landing on the very same crafted item id correctly costs
+// double: wearing two copies means crafting it twice.
+// Best-effort only: the budget is unknown for a report reloaded from
+// history that predates this field (then every pick is kept, unfiltered).
+function affordableCraftedRows(rows) {
+  const budget = Number.isFinite(craftedSparksBudget) ? Math.floor(craftedSparksBudget) : null;
+  if (budget == null || budget <= 0) return { kept: new Set(rows), dropped: [] };
+  const free = rows.filter((t) => t.sourceKind !== 'crafted');
+  const crafted = rows.filter((t) => t.sourceKind === 'crafted');
+  if (!crafted.length) return { kept: new Set(rows), dropped: [] };
+  const dp = new Array(budget + 1).fill(0);
+  const choice = new Array(budget + 1).fill(null).map(() => new Set());
+  crafted.forEach((t, i) => {
+    const cost = Math.min(budget, Math.max(1, Math.round(t.sparkCost ?? 2)));
+    for (let c = budget; c >= cost; c--) {
+      const candidate = dp[c - cost] + t.delta;
+      if (candidate > dp[c]) {
+        dp[c] = candidate;
+        choice[c] = new Set(choice[c - cost]);
+        choice[c].add(i);
+      }
     }
-  }
-  if (crafted.size < 2) return '';
-  const cost = [...crafted.values()].reduce((n, c) => n + c, 0);
-  const budget = craftedSparksBudget;
-  if (!Number.isFinite(budget) || budget <= 0 || cost <= budget) return '';
-  return `<p class="hint bs-sparks-warning">⚠️ This combo needs ${cost} Sparks across ${crafted.size} different crafted items, but you said you only have ${budget} available — you can't craft all of them at once. Treat the crafted rows below as "best per slot", not something to do together; craft whichever has the biggest gain first. (Recrafting an item you already made this season for different stats doesn't cost another Spark.)</p>`;
+  });
+  let bestC = 0;
+  for (let c = 1; c <= budget; c++) if (dp[c] > dp[bestC]) bestC = c;
+  const keptCrafted = [...choice[bestC]].map((i) => crafted[i]);
+  const dropped = crafted.filter((t) => !keptCrafted.includes(t));
+  return { kept: new Set([...free, ...keptCrafted]), dropped };
+}
+
+function sparksNoteHtml(dropped) {
+  if (!dropped.length) return '';
+  const names = dropped.map((t) => esc(t.itemName ?? '?')).join(', ');
+  return `<p class="hint bs-sparks-warning">✨ Limited to ${craftedSparksBudget} Spark${craftedSparksBudget === 1 ? '' : 's'}: the best affordable crafted combo is shown below. Not included (would need more Sparks than you have): ${names}. (Recrafting an item you already made this season for different stats doesn't cost another Spark.)</p>`;
 }
 
 function renderTopGearGrid() {
@@ -2837,7 +2864,7 @@ function renderTopGearGrid() {
   };
   const half = Math.ceil(slots.length / 2);
   el.innerHTML = `<p class="hint">${esc(tr('results.highlightedHint'))}</p>
-    ${sparksWarningHtml([...picks.values()])}
+    ${sparksNoteHtml(picks.sparksDropped ?? [])}
     <div class="pd-grid">
       <div class="pd-col">${slots.slice(0, half).map(cellFor).join('')}</div>
       <div class="pd-col">${slots.slice(half).map(cellFor).join('')}</div>
@@ -2866,17 +2893,18 @@ function renderBestSetup() {
     el.innerHTML = `<p class="hint">Nothing in this run clearly beat what you already have${alreadyBest ? ` — you are already on the best option in ${alreadyBest} categor${alreadyBest === 1 ? 'y' : 'ies'}` : ''}. If several rows were close, re-run at a higher precision to separate them.</p>`;
     return;
   }
-  const total = picks.reduce((n, p) => n + p.row.delta, 0);
-  const sparksWarning = sparksWarningHtml(picks.map((p) => p.row));
+  const { kept, dropped } = affordableCraftedRows(picks.map((p) => p.row));
+  const affordablePicks = picks.filter((p) => kept.has(p.row));
+  const total = affordablePicks.reduce((n, p) => n + p.row.delta, 0);
   el.innerHTML = `
     <div class="bs-head">
       <span class="bs-total">+${Math.round(total).toLocaleString()} DPS</span>
-      <span class="hint">estimated if you make all ${picks.length} change${picks.length === 1 ? '' : 's'}
+      <span class="hint">estimated if you make all ${affordablePicks.length} change${affordablePicks.length === 1 ? '' : 's'}
         (${(total / (tgRows[0]?.dps - tgRows[0]?.delta || 1) * 100).toFixed(1)}%)</span>
     </div>
-    ${sparksWarning}
+    ${sparksNoteHtml(dropped)}
     <ul class="bs-list">
-      ${picks.map((p) => {
+      ${affordablePicks.map((p) => {
     const t = p.row;
     const changes = Array.isArray(t.changes) && t.changes.length
       ? `<ul class="change-list">${t.changes.map((c) => `<li>${esc(c.item ?? prettySlot(c.slot))}
