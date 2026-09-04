@@ -23,6 +23,9 @@ export function saveHistoryEntry(job, mode, options, patch = null) {
       fightLength: options?.fightLength ?? null,
       targetError: options?.targetError ?? null,
       iterations: options?.iterations ?? null,
+      // purely informational (Sparks-budget warning on Best Setup / Your Top
+      // Gear) -- never read by the sim itself
+      craftedSparksBudget: options?.craftedSparksBudget ?? null,
     },
     result: job.result,
   };

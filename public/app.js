@@ -1093,6 +1093,7 @@ async function viewHistoryEntry(id) {
   $('progress-area').classList.add('hidden');
   $('results-area').classList.add('hidden');
   $('topgear-area').classList.add('hidden');
+  craftedSparksBudget = entry.options?.craftedSparksBudget ?? null;
   if (entry.result.topgear) renderTopGear(entry.result);
   else renderResult(entry.result);
   const banner = $('history-banner');
@@ -1721,7 +1722,7 @@ function itemsToSimRow(items, ilvlForItem = null, disabled = false) {
   return `<div class="dropt-items">${items.map((it) => {
     const ilvl = ilvlForItem ? ilvlForItem(it) : null;
     return `<span class="dropt-item" title="${esc(it.name)}">
-      <input type="checkbox" data-exclitem="${it.id}" ${disabled ? 'disabled' : 'checked'}>
+      <input type="checkbox" data-exclitem="${it.id}" data-sparkcost="${it.sparkCost ?? 2}" ${disabled ? 'disabled' : 'checked'}>
       ${dropItemTile(it.id, it.name, ilvl)}
     </span>`;
   }).join('')}</div>`;
@@ -2039,11 +2040,14 @@ function updateCraftedSparksStatus() {
   const sparks = $('dropt-crafted-sparks')?.value;
   if (!$('dropt-crafted')?.checked || sparks === '' || sparks == null) { status.textContent = ''; return; }
   const budget = Number(sparks) || 0;
-  const picked = document.querySelectorAll('[data-group="crafted"] input[data-exclitem]:checked').length;
-  status.textContent = `${picked}/${budget} crafts selected`;
-  status.classList.toggle('over-budget', picked > budget);
-  status.title = picked > budget
-    ? 'You have fewer Sparks than crafted items selected — untick some in the list below, or you won\'t actually be able to craft all the winners this suggests.'
+  // A normal piece costs 2 Sparks (of Tides), a two-hander 4 -- so the
+  // budget check sums real cost, not a flat "1 item = 1 Spark" count.
+  const cost = [...document.querySelectorAll('[data-group="crafted"] input[data-exclitem]:checked')]
+    .reduce((n, cb) => n + (Number(cb.dataset.sparkcost) || 2), 0);
+  status.textContent = `${cost}/${budget} Sparks needed`;
+  status.classList.toggle('over-budget', cost > budget);
+  status.title = cost > budget
+    ? 'You have fewer Sparks than the crafted items selected need — untick some in the list below, or you won\'t actually be able to craft all the winners this suggests. (Recrafting an item you already made this season for different stats doesn\'t cost another Spark.)'
     : '';
 }
 
@@ -2246,6 +2250,11 @@ async function startSim() {
   } else if (mode === 'droptimizer') {
     payload.mode = 'droptimizer';
     payload.selection = collectDroptSelection();
+    // Purely informational metadata for Best Setup / Your Top Gear's Sparks
+    // warning -- not consumed by the sim itself, so it's sent alongside
+    // rather than inside `selection`. Persisted to history so the warning
+    // still works after a reload (see server/history.js).
+    payload.craftedSparksBudget = Number($('dropt-crafted-sparks')?.value) || null;
     if (payload.selection.crafted && !payload.selection.crafted.statPairs.length) {
       showError('Crafted gear is ticked but no stat combo is selected — tick at least one stat pair.');
       return;
@@ -2326,6 +2335,7 @@ function handleUpdate(u) {
     const finishedId = currentJobId; // finishStream clears it
     finishStream();
     $('history-banner').classList.add('hidden');
+    craftedSparksBudget = Number($('dropt-crafted-sparks')?.value) || null;
     if (u.result?.topgear) renderTopGear(u.result);
     else renderResult(u.result);
     setReportId(finishedId);
@@ -2455,6 +2465,11 @@ function renderResult(r) {
 }
 
 let tgRows = [];
+// Sparks budget entered before this run, kept independent of the setup
+// form's own input -- it must survive a reload from history, where that
+// form was never (re)built. Set at sim-completion time and restored from a
+// saved report's persisted options; read by both aggregate results views.
+let craftedSparksBudget = null;
 let skippedNote = ''; // items the sim could not take as asked (an off-hand next to a two-hander)
 let tgActiveChip = null;
 let tgShowFilters = false; // Details' search/chips are worth showing (many sections/rows)
@@ -2768,6 +2783,28 @@ function bestGearPicksBySlot() {
 }
 const NON_SLOT_KINDS = new Set(['enchants', 'gems', 'upgrades', 'folio', 'consumables', 'talents']);
 
+// Both aggregate views (Best Setup, Your Top Gear) independently pick the
+// single best row per slot, with no regard for whether several of those
+// picks are crafted items competing for the same limited Sparks. A normal
+// piece costs 2 Sparks of Tides, a two-hander 4 (server-computed sparkCost
+// -- see droptimizer.js's addCrafted). Cost is summed per distinct item id,
+// since the same crafted ring/trinket can legitimately fill two slots for
+// one Spark. Best-effort only: the budget is unknown for a report reloaded
+// from history that predates this field.
+function sparksWarningHtml(rows) {
+  const crafted = new Map(); // itemId -> cost
+  for (const t of rows) {
+    if (t.sourceKind === 'crafted' && t.itemId != null && !crafted.has(t.itemId)) {
+      crafted.set(t.itemId, t.sparkCost ?? 2);
+    }
+  }
+  if (crafted.size < 2) return '';
+  const cost = [...crafted.values()].reduce((n, c) => n + c, 0);
+  const budget = craftedSparksBudget;
+  if (!Number.isFinite(budget) || budget <= 0 || cost <= budget) return '';
+  return `<p class="hint bs-sparks-warning">⚠️ This combo needs ${cost} Sparks across ${crafted.size} different crafted items, but you said you only have ${budget} available — you can't craft all of them at once. Treat the crafted rows below as "best per slot", not something to do together; craft whichever has the biggest gain first. (Recrafting an item you already made this season for different stats doesn't cost another Spark.)</p>`;
+}
+
 function renderTopGearGrid() {
   const el = $('tg-gear');
   if (!tgEquipped) {
@@ -2800,6 +2837,7 @@ function renderTopGearGrid() {
   };
   const half = Math.ceil(slots.length / 2);
   el.innerHTML = `<p class="hint">${esc(tr('results.highlightedHint'))}</p>
+    ${sparksWarningHtml([...picks.values()])}
     <div class="pd-grid">
       <div class="pd-col">${slots.slice(0, half).map(cellFor).join('')}</div>
       <div class="pd-col">${slots.slice(half).map(cellFor).join('')}</div>
@@ -2829,17 +2867,7 @@ function renderBestSetup() {
     return;
   }
   const total = picks.reduce((n, p) => n + p.row.delta, 0);
-  // "Best setup" combines the single best pick per slot with no regard for
-  // whether several of those picks are crafted items -- crafting each one
-  // spends a Spark, so this combo can call for more crafts than you can
-  // actually afford at once. Best-effort only: the Sparks budget lives in
-  // the droptimizer setup form on this same page, so it's unknown once you
-  // load a saved report from history.
-  const craftedItemIds = new Set(picks.filter((p) => p.row.sourceKind === 'crafted').map((p) => p.row.itemId));
-  const sparksBudget = Number($('dropt-crafted-sparks')?.value);
-  const sparksWarning = craftedItemIds.size > 1 && Number.isFinite(sparksBudget) && sparksBudget > 0 && craftedItemIds.size > sparksBudget
-    ? `<p class="hint bs-sparks-warning">⚠️ This combo includes ${craftedItemIds.size} different crafted items, but you said you only have ${sparksBudget} Spark${sparksBudget === 1 ? '' : 's'} available — you can't craft all of them at once. Treat the crafted rows below as "best per slot", not something to do together; craft whichever has the biggest gain first.</p>`
-    : '';
+  const sparksWarning = sparksWarningHtml(picks.map((p) => p.row));
   el.innerHTML = `
     <div class="bs-head">
       <span class="bs-total">+${Math.round(total).toLocaleString()} DPS</span>

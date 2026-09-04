@@ -1129,7 +1129,8 @@ app.post('/api/sim', async (req, res) => {
       return res.status(400).json({ error: 'Nothing to sim — enable at least one source with usable items.' });
     }
     const job = queue.submit(input, { mode: 'droptimizer', spec, sets, gearBySlot: gearBySlotFrom(profile) });
-    persistWhenDone(job, 'droptimizer', options ?? {}, p);
+    persistWhenDone(job, 'droptimizer',
+      { ...options, craftedSparksBudget: req.body.craftedSparksBudget ?? null }, p);
     return res.json({ jobId: job.id, profilesetCount, skippedUnknown });
   }
 

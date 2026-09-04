@@ -83,7 +83,13 @@ export function buildSourceTree(lootDb, classId, specKey, knownItems = null, gea
       // would list separately despite being stat-identical.
       items: source.kind === 'crafted'
         ? craftedRepresentatives([b], classId, specKey, knownItems, gear)
-          .map((it) => ({ id: it.id, name: it.name, slots: usableSlots(it, classId, specKey, false, gear) }))
+          // Crafting spends Sparks: 2 for a normal piece, 4 for a two-hander
+          // (it fills both weapon "slots") -- verified against Wowhead/
+          // community guides for this season's Sparks of Tides, not guessed.
+          .map((it) => ({
+            id: it.id, name: it.name, slots: usableSlots(it, classId, specKey, false, gear),
+            sparkCost: it.invType === TWO_HAND_INV ? 4 : 2,
+          }))
         : itemsForUi(b.items, classId, specKey, knownItems, gear),
     }));
     const usable = bosses.reduce((n, b) => n + b.usable, 0);
@@ -407,6 +413,10 @@ export function buildDroptimizerInput(profileText, options, selection, lootDb, s
         section: 'Crafted gear',
         boss: SLOT_LABEL(placement),
         sourceKind: 'crafted',
+        // Crafting spends Sparks: 2 for a normal piece, 4 for a two-hander
+        // (verified against Wowhead/community guides, not guessed) -- read
+        // by the client's Best Setup / Your Top Gear Sparks-budget warning.
+        sparkCost: item.invType === TWO_HAND_INV ? 4 : 2,
       };
     }
   };
