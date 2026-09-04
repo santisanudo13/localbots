@@ -8,7 +8,7 @@ import { resolveEquipped, clearResolveCache } from './equippedResolver.js';
 import { SimQueue, findSimc, simcVersion } from './simRunner.js';
 import { parseGear, GEAR_SLOTS } from './gearParser.js';
 import { loadLootDb, buildLootDb, downloadTables, cacheStatus, loadItemSetMap, loadBonusUpgradeMap, loadSocketBonusIds, loadEnchantNames, loadEnchantSpellIds, patchPaths } from './wagoData.js';
-import { buildSourceTree, buildDroptimizerInput, tierSetSummary, weaponSetup, ownedCraftedItemIds, seasonConfig as fullSeasonConfig } from './droptimizer.js';
+import { buildSourceTree, buildDroptimizerInput, tierSetSummary, weaponSetup, ownedCraftedItemIds, sparksAvailable, seasonConfig as fullSeasonConfig } from './droptimizer.js';
 import { probeKnownItems, loadProbeCache } from './simcProbe.js';
 import { CLASS_IDS, INV_SLOTS, ARMOR_TYPE, WEAPONS } from './lootFilter.js';
 import { saveHistoryEntry, listHistory, getHistoryEntry, deleteHistoryEntry } from './history.js';
@@ -584,6 +584,10 @@ app.post('/api/droptimizer/sources', (req, res) => {
       voidcoreIlvl: p.config.voidcore?.craftedIlvl ?? null,
       embellishments: (p.config.embellishmentOptions?.options ?? [])
         .map((o) => ({ key: o.key, label: o.label })),
+      // Read straight from the player's own export (upgrade_currencies=),
+      // not asked for -- null when the export predates that comment or
+      // holds none, in which case the UI falls back to a blank/manual field.
+      sparks: sparksAvailable(profile ?? '', p.config.crafted?.sparkItemId),
     },
     status: dataStatus(p),
   });

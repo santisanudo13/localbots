@@ -65,6 +65,25 @@ function upgradedIlvl(baseIlvl, trackName, upgradeTo, tracks) {
 // their own gear, not asked. A crafted item still equipped or sitting in
 // their bags (its line carries crafted_stats=) is one they can recraft with
 // different stats for free -- no need for them to say so by hand.
+// How many Sparks (or this season's equivalent crafting currency) the
+// player actually has, read straight off their own /simc paste instead of
+// asked for by hand. The addon's `# upgrade_currencies=` comment lists
+// every currency AND item-backed balance the character holds, item-backed
+// ones as `i:<itemId>:<amount>` -- Spark of Tides is one of those (item
+// 274476, see season.json's crafted.sparkItemId), not a normal currency.
+export function sparksAvailable(profileText, sparkItemId) {
+  if (!sparkItemId) return null;
+  const line = profileText.split('\n')
+    .find((l) => l.trim().replace(/^#\s*/, '').startsWith('upgrade_currencies='));
+  if (!line) return null;
+  const value = line.replace(/^#\s*/, '').slice('upgrade_currencies='.length);
+  for (const part of value.split('/')) {
+    const m = part.match(/^i:(\d+):(\d+)$/);
+    if (m && Number(m[1]) === Number(sparkItemId)) return Number(m[2]);
+  }
+  return null;
+}
+
 export function ownedCraftedItemIds(profileText, minSeasonIlvl = null) {
   const { items, equippedItems } = parseGear(profileText);
   const ids = new Set();

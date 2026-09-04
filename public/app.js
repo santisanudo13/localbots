@@ -1917,8 +1917,12 @@ function renderDroptSources(tree, season, craftedCfg) {
         Crafted gear <span class="hint-inline">${crafted[0].usable} craftable items</span></label></h3>
       <div class="dropt-row">
         <label>ilvl <input type="number" id="dropt-crafted-ilvl" disabled value="${craftedCfg?.maxIlvl ?? 285}" min="200" max="320"></label>
-        <label title="How many Sparks (or equivalent crafting currency) you actually have -- crafting a new item spends one, regardless of which stat combo you pick at the table. Leave blank if you don't want to track it.">
-          Sparks available <input type="number" id="dropt-crafted-sparks" disabled min="0" placeholder="?">
+        <label title="${craftedCfg?.sparks != null
+          ? 'Read from your own /simc export (upgrade_currencies=) -- edit if it looks wrong.'
+          : "How many Sparks (or equivalent crafting currency) you actually have -- crafting a new item spends one, regardless of which stat combo you pick at the table. Leave blank if you don't want to track it."}">
+          Sparks available <input type="number" id="dropt-crafted-sparks" disabled min="0" placeholder="?"
+            value="${craftedCfg?.sparks ?? ''}">
+          ${craftedCfg?.sparks != null ? '<span class="hint-inline">(from your export)</span>' : ''}
         </label>
         <span class="hint-inline" id="crafted-sparks-status"></span>
       </div>
