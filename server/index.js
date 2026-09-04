@@ -573,7 +573,7 @@ app.post('/api/droptimizer/sources', (req, res) => {
   ensureProbe(p, profile);
   const tree = buildSourceTree(p.lootDb, CLASS_IDS[spec.class], spec.key, p.knownItems,
     weaponSetup(parseGear(profile ?? '').equipped, invTypeLookup(p)),
-    ownedCraftedItemIds(profile ?? ''));
+    ownedCraftedItemIds(profile ?? '', p.config.crafted?.minIlvl ?? null));
   res.json({
     spec,
     tree,

@@ -143,7 +143,9 @@
     ]
   },
   "crafted": {
-    "maxIlvl": 331
+    "maxIlvl": 331,
+    "_comment": "minIlvl is the lowest ilvl this season's crafted gear can roll at all (quality 1, no crest upgrades) -- verified against community gearing guides (Method.gg, levelupper.com) for Sparks of Tides / Midnight Season 2: Spark-only crafts finish 292-305, so nothing below 292 can be a this-season craft. Used to tell a same-id item already in the character's gear/bags apart from a leftover previous-season craft, which still needs fresh Sparks.",
+    "minIlvl": 292
   },
   "embellishmentOptions": {
     "_comment": "Craft-time embellishments, simmed by appending the effect bonus id to a crafted host item. The four added in 12.1 are now live alongside the season-1 set. markerBonusIds identify embellished items in an export (8960 = Embellished(2) cap, 13555 = Outdoor Embellished(1)).",

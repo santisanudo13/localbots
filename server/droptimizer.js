@@ -65,11 +65,16 @@ function upgradedIlvl(baseIlvl, trackName, upgradeTo, tracks) {
 // their own gear, not asked. A crafted item still equipped or sitting in
 // their bags (its line carries crafted_stats=) is one they can recraft with
 // different stats for free -- no need for them to say so by hand.
-export function ownedCraftedItemIds(profileText) {
+export function ownedCraftedItemIds(profileText, minSeasonIlvl = null) {
   const { items, equippedItems } = parseGear(profileText);
   const ids = new Set();
   for (const it of [...items, ...equippedItems]) {
-    if (it.crafted) ids.add(it.id);
+    if (!it.crafted) continue;
+    // A crafted item below this season's floor is a leftover from a
+    // previous season's crafting currency, not this one's -- recrafting it
+    // still spends fresh Sparks, so it does not count as "already made".
+    if (minSeasonIlvl != null && (it.ilvl ?? 0) < minSeasonIlvl) continue;
+    ids.add(it.id);
   }
   return ids;
 }

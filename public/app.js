@@ -1767,7 +1767,7 @@ function itemsToSimRow(items, ilvlForItem = null, disabled = false) {
     // via it.owned for the Sparks budget math and the Best Setup / Your Top
     // Gear "recraft" badge.
     const owned = it.owned ? `
-      <span class="dropt-owned" title="${lang === 'es' ? 'Ya lo tienes crafteado (equipado o en las bolsas) — un recraft no gasta chispas' : "You already have this crafted (equipped or in your bags) — a recraft costs no Spark"}">
+      <span class="dropt-owned" title="${lang === 'es' ? 'Ya lo tienes crafteado esta temporada (equipado o en las bolsas, a un ilvl de esta season) — un recraft no gasta chispas' : "You already have this crafted THIS season (equipped or in your bags, at a this-season ilvl) — a recraft costs no Spark"}">
         ${lang === 'es' ? '♻️ ya lo tienes' : '♻️ already made'}
       </span>` : '';
     return `<span class="dropt-item" title="${esc(it.name)}">
