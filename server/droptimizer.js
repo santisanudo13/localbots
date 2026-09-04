@@ -61,11 +61,24 @@ function upgradedIlvl(baseIlvl, trackName, upgradeTo, tracks) {
   return steps[target];
 }
 
+// Which craftable items the player already made this season: detected from
+// their own gear, not asked. A crafted item still equipped or sitting in
+// their bags (its line carries crafted_stats=) is one they can recraft with
+// different stats for free -- no need for them to say so by hand.
+export function ownedCraftedItemIds(profileText) {
+  const { items, equippedItems } = parseGear(profileText);
+  const ids = new Set();
+  for (const it of [...items, ...equippedItems]) {
+    if (it.crafted) ids.add(it.id);
+  }
+  return ids;
+}
+
 // What the UI needs: every source with usable-item counts for this spec.
 // `knownItems` (from the simc probe) marks which items the local simc build
 // can actually sim — sources with zero simmable items are flagged
 // unavailable (usually content that isn't released yet).
-export function buildSourceTree(lootDb, classId, specKey, knownItems = null, gear = null) {
+export function buildSourceTree(lootDb, classId, specKey, knownItems = null, gear = null, ownedCraftedIds = null) {
   const tree = { raids: [], dungeons: [], worldBosses: [], outdoor: [], delves: [], crafted: [] };
   for (const source of lootDb.sources) {
     const bosses = source.bosses.map((b) => ({
@@ -87,8 +100,13 @@ export function buildSourceTree(lootDb, classId, specKey, knownItems = null, gea
           // (it fills both weapon "slots") -- verified against Wowhead/
           // community guides for this season's Sparks of Tides, not guessed.
           .map((it) => ({
-            id: it.id, name: it.name, slots: usableSlots(it, classId, specKey, false, gear),
+            id: it.id, name: it.name, slots: usableSlots(it, classId, specKey, false, null),
             sparkCost: it.invType === TWO_HAND_INV ? 4 : 2,
+            // Detected, not asked: this exact item is sitting equipped or in
+            // the character's bags with crafted_stats on it, so it was
+            // already made this season -- a recraft (different stats) costs
+            // no Spark. See ownedCraftedItemIds() for how the set is built.
+            owned: ownedCraftedIds?.has(it.id) ?? false,
           }))
         : itemsForUi(b.items, classId, specKey, knownItems, gear),
     }));
@@ -221,7 +239,12 @@ export function craftedRepresentatives(bosses, classId, specKey, knownItems, gea
   for (const boss of bosses) {
     for (const item of dedupe(boss.items)) {
       if (knownItems && !knownItems.has(item.id)) continue;
-      if (!usableSlots(item, classId, specKey, offspec, gear)) continue;
+      // Ignore the character's current weapon setup entirely for crafted
+      // gear (gear=null) -- a two-hander already equipped shouldn't hide
+      // craftable off-hand items, and vice versa. addCrafted() synthesizes
+      // a valid companion weapon/clears the sibling slot around whichever
+      // one actually gets simmed.
+      if (!usableSlots(item, classId, specKey, offspec, null)) continue;
       const key = `${item.classId}:${item.subclassId}:${item.invType}:${item.embellished ? 1 : 0}`;
       const prev = best.get(key);
       if (!prev || item.quality > prev.quality || (item.quality === prev.quality && item.id > prev.id)) {
@@ -241,7 +264,8 @@ export function craftedRepresentatives(bosses, classId, specKey, knownItems, gea
 // ctx carries the lookups the caller already has loaded:
 //   { socketBonusIds, itemSetMap, setBonusNames }
 export function buildDroptimizerInput(profileText, options, selection, lootDb, spec, knownItems = null, seasonOverride = null, ctx = {}) {
-  const equipped = parseGear(profileText).equipped;
+  const parsedProfile = parseGear(profileText);
+  const equipped = parsedProfile.equipped;
   // Carry each slot's enchant onto whatever we suggest for it. Without this
   // every candidate is simmed bare while the character keeps theirs, which
   // makes upgrades look like losses -- worst on weapons, where a death
@@ -280,6 +304,17 @@ export function buildDroptimizerInput(profileText, options, selection, lootDb, s
   const dropsOffHand = (placement, item) =>
     placement === 'main_hand' && item.invType === TWO_HAND_INV
     && gear.hasOffHand && !titansGrip(specKey);
+
+  // A craftable off-hand item is offered even while a two-hander is
+  // equipped (see craftedRepresentatives/usableSlots(gear=null) above) --
+  // simulating it needs a real one-hander in the main hand too, since the
+  // base profile still has the two-hander there. Any bagged 1H weapon this
+  // class can wield stands in; which one is arbitrary, since the row is
+  // about the off-hand item's own contribution.
+  const ONE_HAND_INV_TYPES = new Set([13, 21, 15, 26]);
+  const bagMainHand = gear.twoHander && ctx.invTypeOf
+    ? parsedProfile.items.find((it) => ONE_HAND_INV_TYPES.has(ctx.invTypeOf(it.id))) ?? null
+    : null;
 
   // Gems ride along with the slot, for the same reason enchants do. Sockets in
   // this expansion are added per slot by the player rather than being born on
@@ -390,7 +425,10 @@ export function buildDroptimizerInput(profileText, options, selection, lootDb, s
   const addCrafted = (item, baseIlvl, pair, craftedVoidcoreIlvl) => {
     if (knownItems && !knownItems.has(item.id)) { skippedUnknown++; return; }
     if (excludedItemIds.has(item.id)) return;
-    const slots = usableSlots(item, classId, specKey, offspec, gear);
+    // gear=null: offered regardless of the current weapon setup (see
+    // craftedRepresentatives above) -- the companion-slot fixups below make
+    // the row actually simulatable.
+    const slots = usableSlots(item, classId, specKey, offspec, null);
     if (!slots || !baseIlvl) return;
     // crafted Voidcores: weapons/trinkets at max craft can go higher
     const ilvl = craftedVoidcoreIlvl && slots.some((s) => voidcoreSlots.has(s))
@@ -402,6 +440,17 @@ export function buildDroptimizerInput(profileText, options, selection, lootDb, s
     for (const placement of slots) {
       const name = `${String(item.name).replace(/["\r\n$\\]/g, "'").slice(0, 46)} ${pairLabel} [${++counter}]`;
       lines.push(`profileset."${name}"=${placement}=,id=${item.id},ilevel=${ilvl},crafted_stats=${pair},crafting_quality=5${ench(placement)}${sock(placement, item)}`);
+      // A two-hander closes the off hand exactly like a dropped one does.
+      const offHandLost = placement === 'main_hand' && item.invType === TWO_HAND_INV
+        && gear.hasOffHand && !titansGrip(specKey);
+      if (offHandLost) lines.push(`profileset."${name}"+=off_hand=`);
+      // An off-hand-only craft with a two-hander currently equipped has no
+      // real main hand to sit next to -- borrow any bagged one-hander so
+      // the row is a legal setup instead of silently keeping the two-hander.
+      const borrowedMainHand = placement === 'off_hand' && gear.twoHander && bagMainHand;
+      if (borrowedMainHand) {
+        lines.push(`profileset."${name}"+=main_hand=${bagMainHand.line.replace(/^\w+=/, '')}`);
+      }
       sets[name] = {
         group,
         itemName: `${item.name}${embTag} (${pairLabel})`,
@@ -417,6 +466,8 @@ export function buildDroptimizerInput(profileText, options, selection, lootDb, s
         // (verified against Wowhead/community guides, not guessed) -- read
         // by the client's Best Setup / Your Top Gear Sparks-budget warning.
         sparkCost: item.invType === TWO_HAND_INV ? 4 : 2,
+        ...(offHandLost ? { offHandLost: true } : {}),
+        ...(borrowedMainHand ? { borrowedMainHand: bagMainHand.name } : {}),
       };
     }
   };
@@ -507,7 +558,11 @@ export function buildDroptimizerInput(profileText, options, selection, lootDb, s
         for (const item of dedupe(boss.items)) {
           if (item.embellished && c.embellishments === false) continue;
           if (knownItems && !knownItems.has(item.id)) { skippedUnknown++; continue; }
-          if (!usableSlots(item, classId, specKey, offspec, gear)) continue;
+          // gear=null: don't let the currently-equipped weapon setup hide a
+          // craftable off-hand item (2H equipped) or a craftable two-hander
+          // (1H+offhand equipped) -- addCrafted() below synthesizes whatever
+          // companion slot change is needed to actually simulate it.
+          if (!usableSlots(item, classId, specKey, offspec, null)) continue;
           const key = `${item.classId}:${item.subclassId}:${item.invType}:${item.embellished ? 1 : 0}`;
           const prev = best.get(key);
           if (!prev || item.quality > prev.quality

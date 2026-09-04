@@ -8,7 +8,7 @@ import { resolveEquipped, clearResolveCache } from './equippedResolver.js';
 import { SimQueue, findSimc, simcVersion } from './simRunner.js';
 import { parseGear, GEAR_SLOTS } from './gearParser.js';
 import { loadLootDb, buildLootDb, downloadTables, cacheStatus, loadItemSetMap, loadBonusUpgradeMap, loadSocketBonusIds, loadEnchantNames, loadEnchantSpellIds, patchPaths } from './wagoData.js';
-import { buildSourceTree, buildDroptimizerInput, tierSetSummary, weaponSetup, seasonConfig as fullSeasonConfig } from './droptimizer.js';
+import { buildSourceTree, buildDroptimizerInput, tierSetSummary, weaponSetup, ownedCraftedItemIds, seasonConfig as fullSeasonConfig } from './droptimizer.js';
 import { probeKnownItems, loadProbeCache } from './simcProbe.js';
 import { CLASS_IDS, INV_SLOTS, ARMOR_TYPE, WEAPONS } from './lootFilter.js';
 import { saveHistoryEntry, listHistory, getHistoryEntry, deleteHistoryEntry } from './history.js';
@@ -572,7 +572,8 @@ app.post('/api/droptimizer/sources', (req, res) => {
   }
   ensureProbe(p, profile);
   const tree = buildSourceTree(p.lootDb, CLASS_IDS[spec.class], spec.key, p.knownItems,
-    weaponSetup(parseGear(profile ?? '').equipped, invTypeLookup(p)));
+    weaponSetup(parseGear(profile ?? '').equipped, invTypeLookup(p)),
+    ownedCraftedItemIds(profile ?? ''));
   res.json({
     spec,
     tree,
