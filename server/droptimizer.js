@@ -84,7 +84,7 @@ export function sparksAvailable(profileText, sparkItemId) {
   return null;
 }
 
-export function ownedCraftedItemIds(profileText, minSeasonIlvl = null) {
+export function ownedCraftedItemIds(profileText, minSeasonIlvl = null, voidforge = null) {
   const { items, equippedItems } = parseGear(profileText);
   const ids = new Set();
   for (const it of [...items, ...equippedItems]) {
@@ -93,6 +93,16 @@ export function ownedCraftedItemIds(profileText, minSeasonIlvl = null) {
     // previous season's crafting currency, not this one's -- recrafting it
     // still spends fresh Sparks, so it does not count as "already made".
     if (minSeasonIlvl != null && (it.ilvl ?? 0) < minSeasonIlvl) continue;
+    // Above the normal (non-Voidforged) crafted cap only makes sense with a
+    // Voidforge boost -- and a PREVIOUS season's forge could push a weapon
+    // or trinket's ilvl into what looks like this season's range too (the
+    // same over-the-crest-cap mechanic existed last season). Require this
+    // season's own Voidforged marker bonus id to actually be on the item,
+    // not just a plausible-looking ilvl.
+    if (voidforge && (it.ilvl ?? 0) > voidforge.maxNormalIlvl) {
+      const bonuses = (it.line?.match(/bonus_id=([\d/]+)/)?.[1] ?? '').split('/').map(Number);
+      if (!bonuses.some((b) => voidforge.markerBonusIds.includes(b))) continue;
+    }
     ids.add(it.id);
   }
   return ids;

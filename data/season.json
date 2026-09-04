@@ -238,7 +238,8 @@
     ],
     "mythIlvl": 344,
     "heroIlvl": 331,
-    "craftedIlvl": 341
+    "craftedIlvl": 341,
+    "markerBonusIds": [13655, 13848]
   },
   "maxIlvl": 344,
   "droptimizer": {
