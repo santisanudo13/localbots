@@ -8,7 +8,7 @@ import { resolveEquipped, clearResolveCache } from './equippedResolver.js';
 import { SimQueue, findSimc, simcVersion } from './simRunner.js';
 import { parseGear, GEAR_SLOTS } from './gearParser.js';
 import { loadLootDb, buildLootDb, downloadTables, cacheStatus, loadItemSetMap, loadBonusUpgradeMap, loadSocketBonusIds, loadEnchantNames, loadEnchantSpellIds, patchPaths } from './wagoData.js';
-import { buildSourceTree, buildDroptimizerInput, tierSetSummary, weaponSetup, ownedCraftedItemIds, sparksAvailable, seasonConfig as fullSeasonConfig } from './droptimizer.js';
+import { buildSourceTree, buildDroptimizerInput, tierSetSummary, weaponSetup, sparksAvailable, seasonConfig as fullSeasonConfig } from './droptimizer.js';
 import { probeKnownItems, loadProbeCache } from './simcProbe.js';
 import { CLASS_IDS, INV_SLOTS, ARMOR_TYPE, WEAPONS } from './lootFilter.js';
 import { saveHistoryEntry, listHistory, getHistoryEntry, deleteHistoryEntry } from './history.js';
@@ -572,11 +572,7 @@ app.post('/api/droptimizer/sources', (req, res) => {
   }
   ensureProbe(p, profile);
   const tree = buildSourceTree(p.lootDb, CLASS_IDS[spec.class], spec.key, p.knownItems,
-    weaponSetup(parseGear(profile ?? '').equipped, invTypeLookup(p)),
-    ownedCraftedItemIds(profile ?? '', p.config.crafted?.minIlvl ?? null,
-      p.config.crafted?.maxIlvl && p.config.voidcore?.markerBonusIds
-        ? { maxNormalIlvl: p.config.crafted.maxIlvl, markerBonusIds: p.config.voidcore.markerBonusIds }
-        : null));
+    weaponSetup(parseGear(profile ?? '').equipped, invTypeLookup(p)));
   res.json({
     spec,
     tree,

@@ -664,9 +664,11 @@ button.search-remove:hover { color: var(--red); }
 .dropt-item input[type="checkbox"] { margin: 0; cursor: pointer; }
 .dropt-owned {
   display: inline-flex; align-items: center; gap: 3px; margin-left: 4px;
-  padding: 0 5px; border-radius: 8px; border: 1px solid var(--green);
-  color: var(--green); font-size: 11px;
+  padding: 0 5px; border-radius: 8px; border: 1px dashed var(--border);
+  cursor: pointer; font-size: 11px;
 }
+.dropt-owned:has(input:checked) { border-color: var(--green); color: var(--green); border-style: solid; }
+.dropt-owned input { margin: 0; }
 .diff-boxes { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; }
 .diff-boxes label { gap: 4px; }
 .hint-inline { color: var(--muted); font-size: 12px; }

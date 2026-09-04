@@ -1756,22 +1756,25 @@ const CRAFT_PAIRS = [
 // for this class/spec, shown with its own icon + real Wowhead hover, each
 // one individually togglable out of the sim (data-exclitem, read back by
 // collectDroptSelection). Checked by default, same as the source itself.
-function itemsToSimRow(items, ilvlForItem = null, disabled = false) {
+function itemsToSimRow(items, ilvlForItem = null, disabled = false, craftedOwnedToggle = false) {
   if (!items?.length) return '';
   return `<div class="dropt-items">${items.map((it) => {
     const ilvl = ilvlForItem ? ilvlForItem(it) : null;
-    // "Already crafted this season" is detected server-side from the
-    // player's own equipped/bagged gear (see ownedCraftedItemIds in
-    // droptimizer.js) -- a recraft (same item, different stats) costs no
-    // Spark, unlike a brand-new one. Purely informational here; read back
-    // via it.owned for the Sparks budget math and the Best Setup / Your Top
-    // Gear "recraft" badge.
-    const owned = it.owned ? `
-      <span class="dropt-owned" title="${lang === 'es' ? 'Ya lo tienes crafteado esta temporada (equipado o en las bolsas, a un ilvl de esta season) — un recraft no gasta chispas' : "You already have this crafted THIS season (equipped or in your bags, at a this-season ilvl) — a recraft costs no Spark"}">
-        ${lang === 'es' ? '♻️ ya lo tienes' : '♻️ already made'}
-      </span>` : '';
+    // "Already crafted this season" can't be told apart reliably from the
+    // export alone -- item level ranges overlap season to season (crest-
+    // upgraded old gear lands in the same range as freshly-crafted new
+    // gear), and even the Voidforge marker bonus id turned out to be
+    // generic, not season-specific (confirmed against a real report: a
+    // last-season weapon still carried it). So this is a manual toggle,
+    // OFF by default -- an item only costs no Spark once the player
+    // themselves confirms they made it this season.
+    const owned = craftedOwnedToggle ? `
+      <label class="dropt-owned" title="${lang === 'es' ? 'Marca esto SOLO si ya lo crafteaste ESTA temporada (un recraft con otras stats no gasta chispas). No se detecta solo -- el ilvl no basta para saber la temporada.' : "Tick this ONLY if you've already crafted this THIS season (a recraft with different stats costs no Spark). Not auto-detected -- ilvl alone can't tell the season apart."}">
+        <input type="checkbox" data-ownitem="${it.id}" ${disabled ? 'disabled' : ''}>
+        <span class="hint-inline">${lang === 'es' ? 'ya crafteado esta temporada' : 'already made this season'}</span>
+      </label>` : '';
     return `<span class="dropt-item" title="${esc(it.name)}">
-      <input type="checkbox" data-exclitem="${it.id}" data-sparkcost="${it.sparkCost ?? 2}" data-owned="${it.owned ? 1 : 0}" ${disabled ? 'disabled' : 'checked'}>
+      <input type="checkbox" data-exclitem="${it.id}" data-sparkcost="${it.sparkCost ?? 2}" ${disabled ? 'disabled' : 'checked'}>
       ${dropItemTile(it.id, it.name, ilvl)}${owned}
     </span>`;
   }).join('')}</div>`;
@@ -1950,7 +1953,7 @@ function renderDroptSources(tree, season, craftedCfg) {
         time; rows respect what your character already has equipped.</p>` : ''}
       <p class="hint">Click any row or item to toggle inclusion in the sim — same-slot crafts
         share stats, so one item stands in per combo you picked above.</p>
-      ${itemsToSimRow(craftedItems, null, true)}
+      ${itemsToSimRow(craftedItems, null, true, true)}
     </div>`);
   }
 
@@ -1995,7 +1998,7 @@ function renderDroptSources(tree, season, craftedCfg) {
     $('dropt-sources').dataset.itemClickBound = '1';
     $('dropt-sources').addEventListener('click', (ev) => {
       const row = ev.target.closest('.dropt-item');
-      if (!row || ev.target.closest('a') || ev.target.matches('input')) return;
+      if (!row || ev.target.closest('a') || ev.target.closest('.dropt-owned') || ev.target.matches('input')) return;
       const cb = row.querySelector('input[data-exclitem]');
       if (cb && !cb.disabled) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', { bubbles: true })); }
     });
@@ -2056,7 +2059,7 @@ function renderDroptSources(tree, season, craftedCfg) {
     // dropping items, since which ones to cut is the player's call.
     $('dropt-sources').addEventListener('change', (ev) => {
       if (!ev.target.matches('#dropt-crafted-sparks') && !ev.target.matches('[data-group="crafted"] input[data-exclitem]')
-        && ev.target.id !== 'dropt-crafted') return;
+        && !ev.target.matches('[data-group="crafted"] input[data-ownitem]') && ev.target.id !== 'dropt-crafted') return;
       updateCraftedSparksStatus();
     });
 
@@ -2093,12 +2096,13 @@ function updateCraftedSparksStatus() {
   const sparks = $('dropt-crafted-sparks')?.value;
   if (!$('dropt-crafted')?.checked || sparks === '' || sparks == null) { status.textContent = ''; return; }
   const budget = Number(sparks) || 0;
+  const ownedIds = new Set([...document.querySelectorAll('[data-group="crafted"] input[data-ownitem]:checked')]
+    .map((cb) => Number(cb.dataset.ownitem)));
   // A normal piece costs 2 Sparks (of Tides), a two-hander 4 -- so the
   // budget check sums real cost, not a flat "1 item = 1 Spark" count.
-  // Already-crafted items (auto-detected server-side, data-owned) are free
-  // to recraft, so they don't count here.
+  // Items manually marked "already made this season" are free to recraft.
   const cost = [...document.querySelectorAll('[data-group="crafted"] input[data-exclitem]:checked')]
-    .filter((cb) => cb.dataset.owned !== '1')
+    .filter((cb) => !ownedIds.has(Number(cb.dataset.exclitem)))
     .reduce((n, cb) => n + (Number(cb.dataset.sparkcost) || 2), 0);
   status.textContent = `${cost}/${budget} Sparks needed`;
   status.classList.toggle('over-budget', cost > budget);
@@ -2311,10 +2315,10 @@ async function startSim() {
     // rather than inside `selection`. Persisted to history so the warning
     // still works after a reload (see server/history.js).
     payload.craftedSparksBudget = Number($('dropt-crafted-sparks')?.value) || null;
-    // Auto-detected server-side (see ownedCraftedItemIds) -- echoed back so
+    // Manually confirmed by the player (see itemsToSimRow) -- echoed back so
     // it's persisted to history the same way as craftedSparksBudget.
-    payload.craftedOwnedIds = [...document.querySelectorAll('[data-group="crafted"] input[data-exclitem][data-owned="1"]')]
-      .map((cb) => Number(cb.dataset.exclitem));
+    payload.craftedOwnedIds = [...document.querySelectorAll('[data-group="crafted"] input[data-ownitem]:checked')]
+      .map((cb) => Number(cb.dataset.ownitem));
     if (payload.selection.crafted && !payload.selection.crafted.statPairs.length) {
       showError('Crafted gear is ticked but no stat combo is selected — tick at least one stat pair.');
       return;
@@ -2396,8 +2400,8 @@ function handleUpdate(u) {
     finishStream();
     $('history-banner').classList.add('hidden');
     craftedSparksBudget = Number($('dropt-crafted-sparks')?.value) || null;
-    craftedOwnedIds = new Set([...document.querySelectorAll('[data-group="crafted"] input[data-exclitem][data-owned="1"]')]
-      .map((cb) => Number(cb.dataset.exclitem)));
+    craftedOwnedIds = new Set([...document.querySelectorAll('[data-group="crafted"] input[data-ownitem]:checked')]
+      .map((cb) => Number(cb.dataset.ownitem)));
     if (u.result?.topgear) renderTopGear(u.result);
     else renderResult(u.result);
     setReportId(finishedId);

@@ -144,8 +144,7 @@
   },
   "crafted": {
     "maxIlvl": 331,
-    "_comment": "minIlvl is the lowest ilvl this season's crafted gear can roll at all (quality 1, no crest upgrades) -- verified against community gearing guides (Method.gg, levelupper.com) for Sparks of Tides / Midnight Season 2: Spark-only crafts finish 292-305, so nothing below 292 can be a this-season craft. Used to tell a same-id item already in the character's gear/bags apart from a leftover previous-season craft, which still needs fresh Sparks. sparkItemId is Spark of Tides' own item id (verified on Wowhead, item=274476) -- the addon export's `# upgrade_currencies=` comment carries the player's real held count as an `i:274476:<amount>` entry, so it's read straight from their /simc paste instead of asked for.",
-    "minIlvl": 292,
+    "_comment": "sparkItemId is Spark of Tides' own item id (verified on Wowhead, item=274476) -- the addon export's `# upgrade_currencies=` comment carries the player's real held count as an `i:274476:<amount>` entry, so it's read straight from their /simc paste instead of asked for. NOTE: there is no reliable way to tell a THIS-season crafted item apart from a same-id previous-season one from the export alone -- ilvl ranges overlap (crest-upgraded old gear lands in the same range as fresh crafts) and even the Voidforge marker bonus id (see voidcore below) turned out to be generic, not season-specific. \"Already crafted this season\" is a manual, off-by-default toggle in the UI for exactly this reason -- do not try to auto-detect it from ilvl or bonus ids again without a genuinely season-exclusive signal.",
     "sparkItemId": 274476
   },
   "embellishmentOptions": {
@@ -238,8 +237,7 @@
     ],
     "mythIlvl": 344,
     "heroIlvl": 331,
-    "craftedIlvl": 341,
-    "markerBonusIds": [13655, 13848]
+    "craftedIlvl": 341
   },
   "maxIlvl": 344,
   "droptimizer": {

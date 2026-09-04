@@ -61,10 +61,6 @@ function upgradedIlvl(baseIlvl, trackName, upgradeTo, tracks) {
   return steps[target];
 }
 
-// Which craftable items the player already made this season: detected from
-// their own gear, not asked. A crafted item still equipped or sitting in
-// their bags (its line carries crafted_stats=) is one they can recraft with
-// different stats for free -- no need for them to say so by hand.
 // How many Sparks (or this season's equivalent crafting currency) the
 // player actually has, read straight off their own /simc paste instead of
 // asked for by hand. The addon's `# upgrade_currencies=` comment lists
@@ -84,35 +80,11 @@ export function sparksAvailable(profileText, sparkItemId) {
   return null;
 }
 
-export function ownedCraftedItemIds(profileText, minSeasonIlvl = null, voidforge = null) {
-  const { items, equippedItems } = parseGear(profileText);
-  const ids = new Set();
-  for (const it of [...items, ...equippedItems]) {
-    if (!it.crafted) continue;
-    // A crafted item below this season's floor is a leftover from a
-    // previous season's crafting currency, not this one's -- recrafting it
-    // still spends fresh Sparks, so it does not count as "already made".
-    if (minSeasonIlvl != null && (it.ilvl ?? 0) < minSeasonIlvl) continue;
-    // Above the normal (non-Voidforged) crafted cap only makes sense with a
-    // Voidforge boost -- and a PREVIOUS season's forge could push a weapon
-    // or trinket's ilvl into what looks like this season's range too (the
-    // same over-the-crest-cap mechanic existed last season). Require this
-    // season's own Voidforged marker bonus id to actually be on the item,
-    // not just a plausible-looking ilvl.
-    if (voidforge && (it.ilvl ?? 0) > voidforge.maxNormalIlvl) {
-      const bonuses = (it.line?.match(/bonus_id=([\d/]+)/)?.[1] ?? '').split('/').map(Number);
-      if (!bonuses.some((b) => voidforge.markerBonusIds.includes(b))) continue;
-    }
-    ids.add(it.id);
-  }
-  return ids;
-}
-
 // What the UI needs: every source with usable-item counts for this spec.
 // `knownItems` (from the simc probe) marks which items the local simc build
 // can actually sim — sources with zero simmable items are flagged
 // unavailable (usually content that isn't released yet).
-export function buildSourceTree(lootDb, classId, specKey, knownItems = null, gear = null, ownedCraftedIds = null) {
+export function buildSourceTree(lootDb, classId, specKey, knownItems = null, gear = null) {
   const tree = { raids: [], dungeons: [], worldBosses: [], outdoor: [], delves: [], crafted: [] };
   for (const source of lootDb.sources) {
     const bosses = source.bosses.map((b) => ({
@@ -136,11 +108,6 @@ export function buildSourceTree(lootDb, classId, specKey, knownItems = null, gea
           .map((it) => ({
             id: it.id, name: it.name, slots: usableSlots(it, classId, specKey, false, null),
             sparkCost: it.invType === TWO_HAND_INV ? 4 : 2,
-            // Detected, not asked: this exact item is sitting equipped or in
-            // the character's bags with crafted_stats on it, so it was
-            // already made this season -- a recraft (different stats) costs
-            // no Spark. See ownedCraftedItemIds() for how the set is built.
-            owned: ownedCraftedIds?.has(it.id) ?? false,
           }))
         : itemsForUi(b.items, classId, specKey, knownItems, gear),
     }));
