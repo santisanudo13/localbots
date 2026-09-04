@@ -127,6 +127,30 @@ export class SimQueue extends EventEmitter {
     return this.queue.findIndex((j) => j.id === id);
   }
 
+  // Every sim currently running or waiting, server-wide -- what the
+  // header's clickable chips show, and what a shared (Docker) deployment's
+  // other users' runs look like from your own browser.
+  list() {
+    const out = [];
+    if (this.running) {
+      out.push({
+        id: this.running.id,
+        label: describe(this.running),
+        status: 'running',
+        percent: this.running.progress?.percent ?? null,
+      });
+    }
+    for (const job of this.queue) {
+      out.push({
+        id: job.id,
+        label: describe(job),
+        status: 'queued',
+        position: this.queuePosition(job.id) + 1,
+      });
+    }
+    return out;
+  }
+
   // What a waiting job needs to show someone: where they are in the line, and
   // what is actually happening in front of them.
   queueInfo(id) {

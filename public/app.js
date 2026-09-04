@@ -11,6 +11,42 @@ let itemSets = []; // detected item sets from /api/gear
 let setMinimums = {}; // setId -> chosen minimum bonus (0/2/4)
 let season = null; // upgrade tracks + voidcore info from the patch's season config
 
+// ---------- header: running/queued sims, from any page (Docker/shared-server aware) ----------
+// Polled rather than pushed over SSE -- it's one small flat list, and every
+// sim (yours or, on a shared server, someone else's) needs to show up here
+// regardless of which page of the app you're currently on.
+async function refreshSimChips() {
+  const el = $('sim-chips');
+  if (!el) return;
+  let jobs = [];
+  try {
+    jobs = (await (await fetch('/api/queue')).json()).jobs ?? [];
+  } catch {
+    return; // offline blip -- keep whatever was last shown rather than blank it
+  }
+  el.innerHTML = jobs.map((j) => {
+    const detail = j.status === 'running'
+      ? (j.percent != null ? `${j.percent}%` : (lang === 'es' ? 'en curso' : 'running'))
+      : (lang === 'es' ? `#${j.position} en cola` : `#${j.position} queued`);
+    return `<span class="sim-chip ${j.status}" data-job="${esc(j.id)}" title="${esc(j.label)}">
+      <span class="dot"></span>${esc(j.label)} · ${esc(detail)}
+    </span>`;
+  }).join('');
+}
+if (!document.getElementById('sim-chips')?.dataset.chipsBound) {
+  document.addEventListener('click', (ev) => {
+    const chip = ev.target.closest('.sim-chip');
+    if (!chip) return;
+    const id = chip.dataset.job;
+    const label = chip.title;
+    const msg = lang === 'es' ? `¿Parar "${label}"?` : `Stop "${label}"?`;
+    if (!confirm(msg)) return;
+    fetch(`/api/sim/${id}/cancel`, { method: 'POST' }).then(refreshSimChips);
+  });
+}
+refreshSimChips();
+setInterval(refreshSimChips, 3000);
+
 // ---------- patch switch (Live / PTR) ----------
 let patch = localStorage.getItem('localbots-patch') ?? 'live';
 let patchDefs = [];
@@ -986,7 +1022,9 @@ function showView(next) {
   view = next;
   document.querySelector('.input-panel').classList.toggle('hidden', view !== 'setup');
   $('quick-nav').classList.toggle('hidden', view !== 'setup');
-  $('sim-bar').classList.toggle('hidden', view !== 'setup');
+  // the running-sim chips/status/cancel button stay visible from any page
+  // (History included) -- only the "Sim it" button itself is setup-only.
+  $('sim-button').classList.toggle('hidden', view !== 'setup');
   $('history-panel').classList.toggle('hidden', view !== 'history');
   $('results-panel').classList.toggle('hidden', view !== 'results');
   const activePage = view === 'history' ? 'history' : 'sim'; // setup & results both map to the "New sim" tab
@@ -1094,6 +1132,7 @@ async function viewHistoryEntry(id) {
   $('results-area').classList.add('hidden');
   $('topgear-area').classList.add('hidden');
   craftedSparksBudget = entry.options?.craftedSparksBudget ?? null;
+  craftedOwnedIds = new Set(entry.options?.craftedOwnedIds ?? []);
   if (entry.result.topgear) renderTopGear(entry.result);
   else renderResult(entry.result);
   const banner = $('history-banner');
@@ -1717,13 +1756,22 @@ const CRAFT_PAIRS = [
 // for this class/spec, shown with its own icon + real Wowhead hover, each
 // one individually togglable out of the sim (data-exclitem, read back by
 // collectDroptSelection). Checked by default, same as the source itself.
-function itemsToSimRow(items, ilvlForItem = null, disabled = false) {
+function itemsToSimRow(items, ilvlForItem = null, disabled = false, craftedOwnedToggle = false) {
   if (!items?.length) return '';
   return `<div class="dropt-items">${items.map((it) => {
     const ilvl = ilvlForItem ? ilvlForItem(it) : null;
+    // "Already crafted this season" -- a recraft (same item, different
+    // stats) costs no Spark, unlike a brand-new one. Only shown for the
+    // crafted-gear list; read back by craftedOwnedIds() for the Sparks
+    // budget math and the Best Setup / Your Top Gear "recraft" badge.
+    const owned = craftedOwnedToggle ? `
+      <label class="dropt-owned" title="${lang === 'es' ? 'Ya lo he crafteado esta temporada (un recraft no gasta chispas)' : "I've already crafted this this season (a recraft costs no Spark)"}">
+        <input type="checkbox" data-ownitem="${it.id}" ${disabled ? 'disabled' : ''}>
+        <span class="hint-inline">${lang === 'es' ? 'ya crafteado' : 'already made'}</span>
+      </label>` : '';
     return `<span class="dropt-item" title="${esc(it.name)}">
       <input type="checkbox" data-exclitem="${it.id}" data-sparkcost="${it.sparkCost ?? 2}" ${disabled ? 'disabled' : 'checked'}>
-      ${dropItemTile(it.id, it.name, ilvl)}
+      ${dropItemTile(it.id, it.name, ilvl)}${owned}
     </span>`;
   }).join('')}</div>`;
 }
@@ -1897,7 +1945,7 @@ function renderDroptSources(tree, season, craftedCfg) {
         time; rows respect what your character already has equipped.</p>` : ''}
       <p class="hint">Click any row or item to toggle inclusion in the sim — same-slot crafts
         share stats, so one item stands in per combo you picked above.</p>
-      ${itemsToSimRow(craftedItems, null, true)}
+      ${itemsToSimRow(craftedItems, null, true, true)}
     </div>`);
   }
 
@@ -1942,7 +1990,7 @@ function renderDroptSources(tree, season, craftedCfg) {
     $('dropt-sources').dataset.itemClickBound = '1';
     $('dropt-sources').addEventListener('click', (ev) => {
       const row = ev.target.closest('.dropt-item');
-      if (!row || ev.target.closest('a') || ev.target.matches('input')) return;
+      if (!row || ev.target.closest('a') || ev.target.closest('.dropt-owned') || ev.target.matches('input')) return;
       const cb = row.querySelector('input[data-exclitem]');
       if (cb && !cb.disabled) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', { bubbles: true })); }
     });
@@ -2003,7 +2051,7 @@ function renderDroptSources(tree, season, craftedCfg) {
     // dropping items, since which ones to cut is the player's call.
     $('dropt-sources').addEventListener('change', (ev) => {
       if (!ev.target.matches('#dropt-crafted-sparks') && !ev.target.matches('[data-group="crafted"] input[data-exclitem]')
-        && ev.target.id !== 'dropt-crafted') return;
+        && !ev.target.matches('[data-group="crafted"] input[data-ownitem]') && ev.target.id !== 'dropt-crafted') return;
       updateCraftedSparksStatus();
     });
 
@@ -2040,9 +2088,13 @@ function updateCraftedSparksStatus() {
   const sparks = $('dropt-crafted-sparks')?.value;
   if (!$('dropt-crafted')?.checked || sparks === '' || sparks == null) { status.textContent = ''; return; }
   const budget = Number(sparks) || 0;
+  const ownedIds = new Set([...document.querySelectorAll('[data-group="crafted"] input[data-ownitem]:checked')]
+    .map((cb) => Number(cb.dataset.ownitem)));
   // A normal piece costs 2 Sparks (of Tides), a two-hander 4 -- so the
   // budget check sums real cost, not a flat "1 item = 1 Spark" count.
+  // Already-crafted items are free to recraft, so they don't count here.
   const cost = [...document.querySelectorAll('[data-group="crafted"] input[data-exclitem]:checked')]
+    .filter((cb) => !ownedIds.has(Number(cb.dataset.exclitem)))
     .reduce((n, cb) => n + (Number(cb.dataset.sparkcost) || 2), 0);
   status.textContent = `${cost}/${budget} Sparks needed`;
   status.classList.toggle('over-budget', cost > budget);
@@ -2255,6 +2307,8 @@ async function startSim() {
     // rather than inside `selection`. Persisted to history so the warning
     // still works after a reload (see server/history.js).
     payload.craftedSparksBudget = Number($('dropt-crafted-sparks')?.value) || null;
+    payload.craftedOwnedIds = [...document.querySelectorAll('[data-group="crafted"] input[data-ownitem]:checked')]
+      .map((cb) => Number(cb.dataset.ownitem));
     if (payload.selection.crafted && !payload.selection.crafted.statPairs.length) {
       showError('Crafted gear is ticked but no stat combo is selected — tick at least one stat pair.');
       return;
@@ -2336,6 +2390,8 @@ function handleUpdate(u) {
     finishStream();
     $('history-banner').classList.add('hidden');
     craftedSparksBudget = Number($('dropt-crafted-sparks')?.value) || null;
+    craftedOwnedIds = new Set([...document.querySelectorAll('[data-group="crafted"] input[data-ownitem]:checked')]
+      .map((cb) => Number(cb.dataset.ownitem)));
     if (u.result?.topgear) renderTopGear(u.result);
     else renderResult(u.result);
     setReportId(finishedId);
@@ -2470,6 +2526,10 @@ let tgRows = [];
 // form was never (re)built. Set at sim-completion time and restored from a
 // saved report's persisted options; read by both aggregate results views.
 let craftedSparksBudget = null;
+// Crafted item ids the player already made this season -- a recraft (same
+// item, different stats) costs no Spark, unlike a brand-new one. Same
+// survive-a-history-reload treatment as craftedSparksBudget above.
+let craftedOwnedIds = new Set();
 let skippedNote = ''; // items the sim could not take as asked (an off-hand next to a two-hander)
 let tgActiveChip = null;
 let tgShowFilters = false; // Details' search/chips are worth showing (many sections/rows)
@@ -2681,6 +2741,7 @@ function rowHtml(t, maxAbs) {
     <td><span class="gear-icon-row" ${itemId ? tileDataAttrs(itemId, info) : ''}>${itemId ? itemTileWithBadge(itemId, info, t) : ''}<span><span class="${glow ? `item-glow ${glow}` : ''}">${esc(t.itemName ?? '?')}</span>${ilvls}${trackSchemeFor(t.track)}
         ${t.catalysed ? `<span class="tier-tag" title="Catalyzed${t.catalystFromName ? ` from ${esc(t.catalystFromName)}` : ''} — shown as the real tier piece it becomes">catalyzed</span>` : ''}
         ${t.offHandLost ? '<span class="tier-tag warn" title="A two-hander fills both hands, so this was simmed with your off-hand taken off — its stats are not counted">off-hand removed</span>' : ''}
+        ${sparksBadge(t)}
         <span class="slot-tag">→ ${target}</span>${caret}
         ${itemId ? enchGemSubline(eq?.enchantId, eq?.gemIds) : ''}</span></span></td>
     <td><span class="source-tag">${esc(translateChipLabel(t.section))}</span>${t.boss ? `<span class="src-boss">→ ${esc(translateChipLabel(t.boss))}</span>` : ''}</td>
@@ -2803,8 +2864,10 @@ const NON_SLOT_KINDS = new Set(['enchants', 'gems', 'upgrades', 'folio', 'consum
 function affordableCraftedRows(rows) {
   const budget = Number.isFinite(craftedSparksBudget) ? Math.floor(craftedSparksBudget) : null;
   if (budget == null || budget <= 0) return { kept: new Set(rows), dropped: [] };
-  const free = rows.filter((t) => t.sourceKind !== 'crafted');
-  const crafted = rows.filter((t) => t.sourceKind === 'crafted');
+  // Already-crafted items are a free recraft -- they never compete for the
+  // budget, so they're treated the same as non-crafted (always-kept) picks.
+  const free = rows.filter((t) => t.sourceKind !== 'crafted' || craftedOwnedIds.has(t.itemId));
+  const crafted = rows.filter((t) => t.sourceKind === 'crafted' && !craftedOwnedIds.has(t.itemId));
   if (!crafted.length) return { kept: new Set(rows), dropped: [] };
   const dp = new Array(budget + 1).fill(0);
   const choice = new Array(budget + 1).fill(null).map(() => new Set());
@@ -2824,6 +2887,21 @@ function affordableCraftedRows(rows) {
   const keptCrafted = [...choice[bestC]].map((i) => crafted[i]);
   const dropped = crafted.filter((t) => !keptCrafted.includes(t));
   return { kept: new Set([...free, ...keptCrafted]), dropped };
+}
+
+// Tags a crafted pick as either a brand-new craft (costs Sparks) or a free
+// recraft of something already made this season -- so Best Setup / Your Top
+// Gear tell you which of the two to actually go do, not just that it's
+// "crafted". Only shown once craftedSparksBudget/craftedOwnedIds exist
+// (i.e. this run tracked them at all).
+function sparksBadge(t) {
+  if (t.sourceKind !== 'crafted') return '';
+  if (craftedOwnedIds.has(t.itemId)) {
+    return `<span class="tier-tag" title="${lang === 'es' ? 'Ya lo has crafteado esta temporada — solo hace falta un recraft, sin gastar chispas' : "You've already crafted this this season — just needs a recraft, no Sparks spent"}">${lang === 'es' ? '♻️ recraft' : '♻️ recraft'}</span>`;
+  }
+  if (!Number.isFinite(craftedSparksBudget)) return '';
+  const cost = t.sparkCost ?? 2;
+  return `<span class="tier-tag" title="${lang === 'es' ? 'Crafteo nuevo' : 'New craft'}">🔨 ${cost} ${lang === 'es' ? 'chispas' : cost === 1 ? 'Spark' : 'Sparks'}</span>`;
 }
 
 function sparksNoteHtml(dropped) {
@@ -2859,6 +2937,7 @@ function renderTopGearGrid() {
     return `<div class="pd-row${pick ? ' pd-changed' : ''}">
       <div class="pd-slot hint-inline">${esc(prettySlot(slot))}</div>
       <span class="gear-icon-row" ${tileDataAttrs(itemId, info)}>${itemTileWithBadge(itemId, info, pick)}<span>${esc(name ?? '?')}${ilvl ? ` <span class="hint-inline">(${ilvl})</span>` : ''}
+        ${pick ? sparksBadge(pick) : ''}
         ${enchGemSubline(eq?.enchantId, eq?.gemIds)}${detail}</span></span>
     </div>`;
   };
@@ -2931,6 +3010,7 @@ function renderBestSetup() {
           <span class="bs-label">${esc(p.label)}</span>
           <span class="bs-pick"><span class="gear-icon-row" ${itemId ? tileDataAttrs(itemId, bsInfo) : ''}>${itemId ? itemTileWithBadge(itemId, bsInfo, t) : ''}<span>${esc(t.itemName ?? '?')}${t.ilvl && eq?.ilvl ? ` <span class="ilvl">(${eq.ilvl} → ${t.ilvl})</span>` : ''}${trackSchemeFor(t.track)}
               ${t.catalysed ? `<span class="tier-tag" title="Catalyzed${t.catalystFromName ? ` from ${esc(t.catalystFromName)}` : ''} — shown as the real tier piece it becomes">catalyzed</span>` : ''}
+              ${sparksBadge(t)}
               ${itemId ? enchGemSubline(eq?.enchantId, eq?.gemIds) : ''}</span></span></span>
           <span class="bs-gain delta-pos">+${Math.round(t.delta).toLocaleString()}${shaky}</span>
         </div>

@@ -1129,8 +1129,11 @@ app.post('/api/sim', async (req, res) => {
       return res.status(400).json({ error: 'Nothing to sim — enable at least one source with usable items.' });
     }
     const job = queue.submit(input, { mode: 'droptimizer', spec, sets, gearBySlot: gearBySlotFrom(profile) });
-    persistWhenDone(job, 'droptimizer',
-      { ...options, craftedSparksBudget: req.body.craftedSparksBudget ?? null }, p);
+    persistWhenDone(job, 'droptimizer', {
+      ...options,
+      craftedSparksBudget: req.body.craftedSparksBudget ?? null,
+      craftedOwnedIds: req.body.craftedOwnedIds ?? [],
+    }, p);
     return res.json({ jobId: job.id, profilesetCount, skippedUnknown });
   }
 
@@ -1209,6 +1212,10 @@ app.post('/api/sim/:id/cancel', (req, res) => {
   const ok = queue.cancel(req.params.id);
   res.json({ cancelled: ok });
 });
+
+// Every sim running or waiting right now, for the header's clickable chips
+// (polled — this is one flat list, not worth its own SSE stream).
+app.get('/api/queue', (req, res) => res.json({ jobs: queue.list() }));
 
 // Shut the server down from the UI (localhost app — the button is the
 // only way to stop it without a terminal). Kills any running sim first.

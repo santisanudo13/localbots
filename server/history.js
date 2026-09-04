@@ -26,6 +26,7 @@ export function saveHistoryEntry(job, mode, options, patch = null) {
       // purely informational (Sparks-budget warning on Best Setup / Your Top
       // Gear) -- never read by the sim itself
       craftedSparksBudget: options?.craftedSparksBudget ?? null,
+      craftedOwnedIds: options?.craftedOwnedIds ?? [],
     },
     result: job.result,
   };

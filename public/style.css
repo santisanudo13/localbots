@@ -111,7 +111,7 @@ header h1 {
 /* Single full-width scrolling page for setup/results/history, Raidbots-style,
    rather than a cramped fixed sidebar next to results. */
 main {
-  padding: 18px 22px 96px; /* bottom padding clears the fixed sim-bar */
+  padding: 18px 22px;
   width: 80%;
   max-width: 1800px;
   margin: 0 auto;
@@ -159,24 +159,31 @@ main {
 }
 .quick-nav-link:hover { color: var(--text); border-color: var(--accent-dim); }
 
-/* --- sticky bottom action bar: always-visible Sim it button + live count,
-   so submitting a long setup page never needs scrolling back to the top --- */
-.sim-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 60;
-  display: flex;
+/* --- header-right cluster: running-sim chips + status text + Sim it button,
+   always visible regardless of which page/tab you're on --- */
+.header-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.sim-bar-status { color: var(--muted); font-size: 13px; }
+.sim-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sim-chip {
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 14px;
-  padding: 12px 22px;
-  background: var(--panel);
-  border-top: 1px solid var(--border);
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+  gap: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 12px 4px 10px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
 }
-.sim-bar-status { color: var(--muted); font-size: 13px; margin-right: auto; }
+.sim-chip:hover { border-color: var(--accent-dim); }
+.sim-chip .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.sim-chip.running .dot { background: var(--accent); animation: sim-chip-pulse 1.2s ease-in-out infinite; }
+.sim-chip.queued .dot { background: var(--muted); }
+@keyframes sim-chip-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
 
 /* --- results page: full-width, separate from setup (Raidbots-style report page) --- */
 .results-topbar {
@@ -653,8 +660,15 @@ button.search-remove:hover { color: var(--red); }
   padding: 2px 5px; border-radius: 4px;
 }
 .dropt-item:hover { background: var(--panel-hover, rgba(255,255,255,0.06)); }
-.dropt-item:has(input:not(:checked)) { opacity: 0.4; }
+.dropt-item:has(input[data-exclitem]:not(:checked)) { opacity: 0.4; }
 .dropt-item input[type="checkbox"] { margin: 0; cursor: pointer; }
+.dropt-owned {
+  display: inline-flex; align-items: center; gap: 3px; margin-left: 4px;
+  padding: 0 5px; border-radius: 8px; border: 1px dashed var(--border);
+  cursor: pointer;
+}
+.dropt-owned:has(input:checked) { border-color: var(--green); color: var(--green); border-style: solid; }
+.dropt-owned input { margin: 0; }
 .diff-boxes { display: flex; gap: 10px; flex-wrap: wrap; font-size: 13px; }
 .diff-boxes label { gap: 4px; }
 .hint-inline { color: var(--muted); font-size: 12px; }
