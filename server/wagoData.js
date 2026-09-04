@@ -248,7 +248,16 @@ export function loadEnchantNames(cacheDir = CACHE_DIR) {
   const path = join(cacheDir, 'SpellItemEnchantment.csv');
   if (!existsSync(path)) return new Map();
   const rows = parseCsv(readFileSync(path, 'utf8'), TABLES.SpellItemEnchantment);
-  return new Map(rows.map((r) => [Number(r.ID), stripWowMarkup(r.Name_lang)]).filter(([, name]) => name));
+  return new Map(rows.map((r) => [Number(r.ID), stripWowMarkup(r.Name_lang)])
+    // Leg armor kits/spellthreads carry no real display name at all -- their
+    // Name_lang is a raw "+$k1 Intellect & +$k2 Stamina"-style description
+    // template, the $k1/$k2 scaling tokens meant to be substituted by the
+    // game client itself, which this app has no formula for (same root cause
+    // as loadEnchantSpellIds only handling Effect type 3). Showing that
+    // literal text is worse than the curated season.json label (see
+    // gemOrEnchantLabel's fallback), so this drops it rather than caching
+    // garbage the caller would otherwise prefer over the fallback.
+    .filter(([, name]) => name && !/\$\w/.test(name)));
 }
 
 // enchant_id -> the spell id its primary effect grants, when Effect_0 is a

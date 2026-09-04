@@ -340,6 +340,53 @@ app.get('/api/patches', (req, res) => {
 // relabelled the same way once it's available. Consumable options only
 // carry a simc value string with no name table at all, so those alone stay
 // in English (the client shows them via its own consumable-label i18n).
+// consumableOptions (data/season.json) carries no item id of its own -- only
+// a simc profile string and a hand-written English label, e.g. "Royal Roast
+// (+50 primary stat)" -- unlike gems/diamonds (real item id up front). This
+// resolves one by matching the label's base name (the part before the stat
+// note) against the BASE (English) patch's item cache by exact, case-
+// insensitive string equality -- cached per base patch since it never
+// changes for a given cache build. Used both to attach a real `id` to every
+// consumable option (for the "Also compare" picker's Wowhead tooltip link,
+// same as gems) and, in localizeSeasonConfig below, to translate the label.
+function consumableItemIdsFor(basePatch) {
+  basePatch.itemTables ??= loadItemTables(basePatch.paths.cacheDir);
+  if (!basePatch.itemTables) return null;
+  return basePatch.consumableItemIds ??= (() => {
+    const idx = itemNameIndex(basePatch.itemTables);
+    const ids = {};
+    for (const choices of Object.values(basePatch.config?.consumableOptions ?? {})) {
+      if (!Array.isArray(choices)) continue;
+      for (const c of choices) {
+        const baseName = c.label.replace(/\s*\(.*\)\s*$/, '').trim().toLowerCase();
+        const id = idx.get(baseName);
+        if (id) ids[c.value] = id;
+      }
+    }
+    return ids;
+  })();
+}
+
+// Attaches each consumable option's resolved item id (see above), regardless
+// of locale -- English labels already match the base patch directly, so this
+// runs unconditionally rather than only inside localizeSeasonConfig's
+// locale-gated translation path.
+function withConsumableItemIds(config, p) {
+  if (!config?.consumableOptions) return config;
+  const basePatch = patches.get(p.def.id) ?? p;
+  const ids = consumableItemIdsFor(basePatch);
+  if (!ids) return config;
+  return {
+    ...config,
+    consumableOptions: Object.fromEntries(
+      Object.entries(config.consumableOptions).map(([cat, choices]) => [
+        cat,
+        Array.isArray(choices) ? choices.map((c) => ({ ...c, id: ids[c.value] ?? null })) : choices,
+      ]),
+    ),
+  };
+}
+
 function localizeSeasonConfig(config, p) {
   if (!config || p.locale === 'en') return config;
   p.itemTables ??= loadItemTables(p.paths.cacheDir);
@@ -365,12 +412,36 @@ function localizeSeasonConfig(config, p) {
       ]),
     );
   }
+  // Translates each consumable's label to this locale's item name (see
+  // consumableItemIdsFor above for how the id is found), keeping its
+  // "(+50 primary stat)"-style note in English since that's our own
+  // annotation, not part of the item's real name.
+  if (out.consumableOptions) {
+    const basePatch = patches.get(p.def.id) ?? p;
+    const ids = consumableItemIdsFor(basePatch);
+    if (ids) {
+      const relabelConsumable = (c) => {
+        const id = ids[c.value];
+        const name = id && items?.get(id)?.name;
+        if (!name) return c.label;
+        const note = c.label.match(/\s*\(.*\)\s*$/)?.[0] ?? '';
+        return `${name}${note}`;
+      };
+      out.consumableOptions = Object.fromEntries(
+        Object.entries(out.consumableOptions).map(([cat, choices]) => [
+          cat,
+          Array.isArray(choices) ? choices.map((c) => ({ ...c, label: relabelConsumable(c) })) : choices,
+        ]),
+      );
+    }
+  }
   return out;
 }
 
 app.get('/api/season', (req, res) => {
   const p = getPatch(req);
-  res.json(localizeSeasonConfig(p.config, p) ?? patches.get(DEFAULT_PATCH_ID).config);
+  const config = localizeSeasonConfig(p.config, p) ?? patches.get(DEFAULT_PATCH_ID).config;
+  res.json(withConsumableItemIds(config, p));
 });
 
 function uniqueLootItems(lootDb) {
@@ -553,7 +624,12 @@ function enrichEquipped(profile, resolved, p) {
   const { equipped } = parseGear(profile);
   const itemIds = equippedIdsFrom(equipped); // so the page can draw item icons
   return resolved.map((it0) => {
-    const it = { ...it0, id: itemIds[it0.slot] ?? null };
+    // the raw simc line, bonus_id and all -- so the client can link Wowhead's
+    // tooltip widget straight at this exact item roll (see app.js's
+    // bonusIdsFromLine) instead of a bare item id, which shows some other
+    // roll entirely on crafted gear (a random secondary-stat allocation, not
+    // the one this item actually has)
+    const it = { ...it0, id: itemIds[it0.slot] ?? null, line: equipped[it0.slot] ?? null };
     // a Catalyst-converted piece keeps the secondaries of what it was made
     // from, and the export names that source
     const src = equipped[it0.slot]?.match(/redirected_base_stats=(\d+)/)?.[1];
@@ -635,6 +711,10 @@ function gearBySlotFrom(profile) {
       ilvl: equippedIlvls?.[slot] ?? null,
       enchantId: Number(line.match(/,enchant_id=(\d+)/)?.[1]) || null,
       gemIds: (line.match(/,gem_id=([\d/]+)/)?.[1] ?? '').split('/').filter((g) => g && g !== '0'),
+      // the raw line, bonus_id and all -- lets the results view link
+      // Wowhead's tooltip widget at this item's exact roll (see app.js's
+      // bonusIdsFromLine) rather than a bare item id
+      line,
     };
   }
   return out;
@@ -822,6 +902,25 @@ app.get('/api/enchant-names', (req, res) => {
   }
   res.json({ names: out, spellIds, itemIds, ready: !!map?.size });
 });
+
+// Name -> item id index, used by consumableItemIdsFor (see above) to resolve
+// a consumable option's real item id from its label's base name -- the same
+// "verify, don't guess" approach as ENCHANT_TO_SCROLL_ITEM_OFFSET above, just
+// keyed by name instead of a numeric offset since consumables have no id to
+// guess from at all.
+let itemNameIndexCache = null;
+let itemNameIndexForTables = null;
+function itemNameIndex(itemTables) {
+  if (itemNameIndexForTables === itemTables) return itemNameIndexCache;
+  const idx = new Map();
+  for (const [id, item] of itemTables?.items ?? []) {
+    const key = item.name?.trim().toLowerCase();
+    if (key && !idx.has(key)) idx.set(key, id);
+  }
+  itemNameIndexForTables = itemTables;
+  itemNameIndexCache = idx;
+  return idx;
+}
 
 app.post('/api/armory', async (req, res) => {
   const { region, realm, name } = req.body ?? {};

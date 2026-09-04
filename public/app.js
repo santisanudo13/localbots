@@ -404,8 +404,20 @@ const SLOT_TITLE_KEYS = {
 function renderCompareGroups() {
   const groups = [];
 
-  const optionRow = (group, cat, key, label) =>
-    `<label class="cg-opt"><input type="checkbox" data-cgroup="${group}" data-cat="${cat}" data-key="${esc(String(key))}" checked> ${esc(label)}</label>`;
+  // Same look as an equipped item's enchant/gem subline in the live report
+  // (see enchGemSubline): a small icon + name, wrapped in a real Wowhead
+  // tooltip link when an item id is already known. Gems/diamonds/consumables
+  // all carry a real item id up front (the server resolves consumables' via
+  // /api/season -- see consumableItemIdsFor); enchants don't (an id-less row
+  // renders icon-less plain text first, then warmCompareEnchantWowhead
+  // patches in the icon + link once resolved -- the ".cg-opt-text" span is
+  // what that looks for and replaces).
+  const optionRow = (group, cat, key, label, itemId) => {
+    const inner = itemId
+      ? wowheadLinkedTile(itemId, label)
+      : `<span class="cg-opt-text">${esc(label)}</span>`;
+    return `<label class="cg-opt"><input type="checkbox" data-cgroup="${group}" data-cat="${cat}" data-key="${esc(String(key))}" checked> ${inner}</label>`;
+  };
 
   // consumables
   const cons = [];
@@ -413,7 +425,7 @@ function renderCompareGroups() {
     if (cat.startsWith('_') || !Array.isArray(choices)) continue;
     const consLabelKey = { temporary_enchant: 'compare.weaponOil', flask: 'compare.flask', food: 'compare.food', potion: 'compare.potion' }[cat];
     cons.push(`<div class="cg-slot-head">${esc(consLabelKey ? tr(consLabelKey) : cat[0].toUpperCase() + cat.slice(1))}</div>`);
-    cons.push(...choices.map((c) => optionRow('consumables', cat, c.value, c.label)));
+    cons.push(...choices.map((c) => optionRow('consumables', cat, c.value, c.label, c.id)));
   }
   groups.push(['consumables', tr('compare.consumables'), cons.join('')]);
 
@@ -433,9 +445,9 @@ function renderCompareGroups() {
 
   // gems + diamonds
   const gems = [`<div class="cg-slot-head">${esc(tr('compare.statGems'))}</div>`];
-  gems.push(...(season.gemOptions ?? []).map((g) => optionRow('gems', 'gems', g.id, g.label)));
+  gems.push(...(season.gemOptions ?? []).map((g) => optionRow('gems', 'gems', g.id, g.label, g.id)));
   gems.push(`<div class="cg-slot-head">${esc(tr('compare.eversongDiamonds'))}</div>`);
-  gems.push(...(season.diamondOptions?.options ?? []).map((d) => optionRow('gems', 'diamonds', d.id, d.label)));
+  gems.push(...(season.diamondOptions?.options ?? []).map((d) => optionRow('gems', 'diamonds', d.id, d.label, d.id)));
   groups.push(['gems', tr('compare.gems'), gems.join('')]);
 
   // folio (no picker — the runes are always cheap to sim)
@@ -483,6 +495,64 @@ function renderCompareGroups() {
     cb.addEventListener('change', updateCompareCounts);
   });
   updateCompareCounts();
+  // gems/diamonds/consumables already carry a real item id (see optionRow
+  // above), so their icons/tooltip links are ready as soon as the icon batch
+  // + widget script themselves are; enchants need their real id resolved
+  // first (no item id of their own -- see warmCompareEnchantWowhead)
+  paintItemIcons($('compare-groups'));
+  loadWowheadWidget().then(refreshWowheadLinks);
+  warmCompareEnchantWowhead();
+}
+
+// Enchant options have no item id of their own to link Wowhead's widget off
+// straight away (unlike gems/diamonds -- see optionRow), so every enchant
+// row renders with a plain <span> first and this resolves the real scroll-
+// item id (or failing that, the granted spell) the same way an equipped
+// item's enchant subline does, then swaps each span for a linked <a> --
+// preserving the existing checkbox elements (and whatever the user has
+// already ticked/unticked) rather than re-rendering the whole panel.
+async function warmCompareEnchantWowhead() {
+  const ids = [];
+  for (const choices of Object.values(season.enchantOptions ?? {})) {
+    if (!Array.isArray(choices)) continue;
+    for (const c of choices) if (c.dps !== false) ids.push(c.id);
+  }
+  if (!ids.length) return;
+  let anyLink = false;
+  try {
+    const r = await fetch(`/api/enchant-names?ids=${ids.join(',')}&patch=${encodeURIComponent(patch)}&lang=${encodeURIComponent(lang)}`);
+    const j = await r.json();
+    for (const id of ids) {
+      if (j.itemIds?.[id]) { enchantItemIdCache.set(id, j.itemIds[id]); anyLink = true; }
+      if (j.spellIds?.[id]) { enchantSpellIdCache.set(id, j.spellIds[id]); anyLink = true; }
+    }
+  } catch {
+    return;
+  }
+  if (!anyLink) return;
+  await loadWowheadWidget();
+  document.querySelectorAll('#compare-groups input[data-cgroup="enchants"]').forEach((cb) => {
+    const id = Number(cb.dataset.key);
+    const itemId = enchantItemIdCache.get(id);
+    const spellId = enchantSpellIdCache.get(id);
+    const entity = itemId ? `item=${itemId}` : spellId ? `spell=${spellId}` : null;
+    const span = cb.parentElement.querySelector('.cg-opt-text');
+    if (!entity || !span) return;
+    const name = span.textContent.trim();
+    // no per-enchant icon exists in the game data (see ENCHANT_ICON_URL) --
+    // same generic scroll icon the report's own enchant subline uses
+    const whHost = lang === 'es' ? 'es.wowhead.com' : 'www.wowhead.com';
+    const whId = lang === 'es' ? `es:${entity}` : entity;
+    const a = document.createElement('a');
+    a.className = 'cg-opt-link enchgem-item';
+    a.href = `https://${whHost}/${entity}`;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.setAttribute('data-wowhead', whId);
+    a.innerHTML = `<img class="mini-icon" alt="" src="${ENCHANT_ICON_URL}"> ${esc(name)}`;
+    span.replaceWith(a);
+  });
+  refreshWowheadLinks();
 }
 
 function selectedOptions(group) {
@@ -1378,6 +1448,7 @@ async function refreshGearList() {
             statSource: Number(String(item.line ?? '').match(/redirected_base_stats=(\d+)/)?.[1]) || null,
             source: item.section, quality: item.quality, craftingQuality: item.craftingQuality,
             craftedStats: item.craftedStats,
+            bonusIds: bonusIdsFromLine(item.line),
             enchantId: equippedEnchGemBySlot[item.slot]?.enchantId,
             gemIds: equippedEnchGemBySlot[item.slot]?.gemIds,
             ...(trackInfo(item)
@@ -1528,6 +1599,7 @@ function renderEquippedList() {
         name: it.name, ilvl: it.ilvl, slot: prettySlot(it.slot),
         statSource: it.statSource ?? null,
         source: it.track ? `${it.track}${it.stepIdx != null ? ` ${it.stepIdx + 1}/6` : ''}` : null,
+        bonusIds: bonusIdsFromLine(it.line),
       })}<span>${esc(it.name)} <span class="hint-inline">${it.ilvl}${why}${it.track ? ` · ${it.track}${it.stepIdx != null ? ` ${it.stepIdx + 1}/6` : ''}${it.trackSource === 'guessed' ? ' (guessed)' : ''}` : ''}</span></span>
     </span></label>`;
   }).join('');
@@ -1538,6 +1610,7 @@ function renderEquippedList() {
 // ---------- droptimizer ----------
 let droptTree = null;
 let droptPoll = null;
+let raidByInstance = {}; // instanceId -> raid tree entry, for live ilvl updates on diff toggle
 
 $('dropt-all').addEventListener('click', () => setAllDropt(true));
 $('dropt-none').addEventListener('click', () => setAllDropt(false));
@@ -1552,7 +1625,13 @@ $('dropt-refresh').addEventListener('click', async () => {
 
 function setAllDropt(on) {
   document.querySelectorAll('#dropt-sources input[type="checkbox"]').forEach((cb) => {
-    if (!cb.disabled) cb.checked = on;
+    if (cb.disabled) return;
+    cb.checked = on;
+    // raid difficulty / crafted-master checkboxes drive a live re-render
+    // (ilvl display, item enable state) that only runs off a 'change' event
+    if (cb.dataset.raid || cb.id === 'dropt-crafted' || cb.id === 'dropt-crafted-emb') {
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+    }
   });
 }
 
@@ -1633,6 +1712,56 @@ const CRAFT_PAIRS = [
   ['36/49', 'Haste + Mastery'], ['36/40', 'Haste + Vers'], ['49/40', 'Mastery + Vers'],
 ];
 
+// Raidbots-style "Items to Sim" list: every item a boss can actually drop
+// for this class/spec, shown with its own icon + real Wowhead hover, each
+// one individually togglable out of the sim (data-exclitem, read back by
+// collectDroptSelection). Checked by default, same as the source itself.
+function itemsToSimRow(items, ilvlForItem = null, disabled = false) {
+  if (!items?.length) return '';
+  return `<div class="dropt-items">${items.map((it) => {
+    const ilvl = ilvlForItem ? ilvlForItem(it) : null;
+    return `<span class="dropt-item" title="${esc(it.name)}">
+      <input type="checkbox" data-exclitem="${it.id}" ${disabled ? 'disabled' : 'checked'}>
+      ${dropItemTile(it.id, it.name, ilvl)}
+    </span>`;
+  }).join('')}</div>`;
+}
+
+// Like wowheadLinkedTile, but also pins the hovercard/link to an exact item
+// level (Raidbots does the same with its own &ilvl= param) -- without it
+// Wowhead shows some default roll instead of what this difficulty actually
+// drops, and it never changes when you flip a raid's difficulty checkboxes.
+function dropItemTile(itemId, label, ilvlInfo) {
+  const whHost = lang === 'es' ? 'es.wowhead.com' : 'www.wowhead.com';
+  const ilvlParam = ilvlInfo?.param ? `ilvl=${Number(ilvlInfo.param)}` : '';
+  const wowhead = (lang === 'es' ? `es:item=${Number(itemId)}` : `item=${Number(itemId)}`) + (ilvlParam ? `&${ilvlParam}` : '');
+  const href = `https://${whHost}/item=${Number(itemId)}${ilvlParam ? `?${ilvlParam}` : ''}`;
+  const tile = itemTile(itemId, { mini: true, noLink: true });
+  return `<a class="cg-opt-link enchgem-item" href="${href}" data-wowhead="${wowhead}" target="_blank" rel="noopener">${tile} ${esc(label)}${ilvlInfo?.display ? ` <span class="hint-inline">(${esc(ilvlInfo.display)})</span>` : ''}</a>`;
+}
+
+// Per-boss item list for one raid, respecting whichever difficulties are
+// currently checked -- multiple checked difficulties show every distinct
+// ilvl they'd drop (e.g. "295 / 308"), and toggling a difficulty updates
+// this immediately instead of only affecting what gets simmed. The Wowhead
+// hovercard itself can only pin one ilvl, so it uses the first checked
+// difficulty's.
+function raidBossItemsHtml(raid, checkedDiffs) {
+  // With no difficulty checked, nothing from this raid gets simmed -- grey
+  // out and untick every item instead of leaving them looking included.
+  const none = !checkedDiffs.length;
+  return raid.bosses.filter((b) => b.items?.length).map((boss) => {
+    const ilvlForItem = (it) => {
+      if (!it.drops) return null;
+      const vals = [...new Set(checkedDiffs.map((d) => it.drops[d]?.ilvl).filter(Boolean))];
+      if (!vals.length) return null;
+      return { display: vals.join(' / '), param: vals[0] };
+    };
+    return `<div class="dropt-row boss-items-row">
+      <span class="hint-inline">${esc(boss.name)}</span>${itemsToSimRow(boss.items, ilvlForItem, none)}</div>`;
+  }).join('');
+}
+
 // Raid drop levels climb through the instance, so each boss gets its own row.
 // Shown collapsed: it exists to be checked against the adventure guide.
 function bossLevelTable(raid, diffs) {
@@ -1659,20 +1788,23 @@ function renderDroptSources(tree, season, craftedCfg) {
     `<h3><label><input type="checkbox" class="group-toggle" ${on ? 'checked' : ''}> ${title}</label></h3>`;
 
   const raids = avail(tree.raids);
+  raidByInstance = {};
   if (raids.length) {
     html.push(`<div class="dropt-group" data-group="raids">${groupHeader('Raids')}`);
     const diffs = Object.keys(season.raidDifficulties);
     html.push(`<div class="dropt-row diff-toggle-row"><span class="hint-inline">All raids:</span>
       ${diffs.map((d) => `<button class="mini diff-toggle" data-difftoggle="${d}">${d}</button>`).join('')}</div>`);
     for (const raid of raids) {
-      const diffs = Object.keys(season.raidDifficulties);
-      html.push(`<div class="dropt-row">
+      raidByInstance[raid.instanceId] = raid;
+      html.push(`<div class="raid-block" data-raidid="${raid.instanceId}">
+      <div class="dropt-row">
         <span class="src-name">${esc(raid.name)} <span class="hint-inline">${raid.usable} items</span></span>
         <span class="diff-boxes">${diffs.map((d) => `
           <label><input type="checkbox" data-raid="${raid.instanceId}" data-diff="${d}"
             ${d === 'Heroic' ? 'checked' : ''}> ${d}</label>`).join('')}
         </span></div>`);
       html.push(bossLevelTable(raid, diffs));
+      html.push(`<div class="raid-items">${raidBossItemsHtml(raid, ['Heroic'])}</div></div>`);
     }
     html.push('</div>');
   }
@@ -1691,7 +1823,8 @@ function renderDroptSources(tree, season, craftedCfg) {
     for (const d of dungeons) {
       html.push(`<div class="dropt-row">
         <label><input type="checkbox" data-dungeon="${d.instanceId}" checked>
-          ${esc(d.name)} <span class="hint-inline">${d.usable} items</span></label></div>`);
+          ${esc(d.name)} <span class="hint-inline">${d.usable} items</span></label>
+        ${itemsToSimRow(d.bosses.flatMap((b) => b.items ?? []))}</div>`);
     }
     html.push('</div>');
   }
@@ -1728,13 +1861,15 @@ function renderDroptSources(tree, season, craftedCfg) {
   }
 
   if (crafted.length) {
-    html.push(`<div class="dropt-group" data-group="crafted">${groupHeader('Crafted gear', false)}
+    const craftedItems = crafted.flatMap((c) => c.bosses.flatMap((b) => b.items ?? []));
+    html.push(`<div class="dropt-group" data-group="crafted">
+      <h3><label><input type="checkbox" id="dropt-crafted">
+        Crafted gear <span class="hint-inline">${crafted[0].usable} craftable items</span></label></h3>
       <div class="dropt-row">
-        <label><input type="checkbox" id="dropt-crafted">
-          Profession crafts <span class="hint-inline">${crafted[0].usable} craftable items · you pick the two stats</span></label>
         <label>ilvl <input type="number" id="dropt-crafted-ilvl" value="${craftedCfg?.maxIlvl ?? 285}" min="200" max="320"></label>
       </div>
       <div class="dropt-row" id="crafted-pairs">
+        <span class="hint-inline">Preferred Stats:</span>
         ${CRAFT_PAIRS.map(([pair, label]) => `
           <label><input type="checkbox" data-pair="${pair}" checked> ${label}</label>`).join('')}
       </div>
@@ -1755,8 +1890,9 @@ function renderDroptSources(tree, season, craftedCfg) {
       <p class="hint">Each ticked embellishment is simmed on a crafted piece — once, and
         doubled (×2) where two copies stack. Only 2 embellished items can be worn at a
         time; rows respect what your character already has equipped.</p>` : ''}
-      <p class="hint">Every craftable slot is simmed at max quality with each ticked stat
-        combo (same-slot crafts share stats, so one item stands in per slot).</p>
+      <p class="hint">Click any row or item to toggle inclusion in the sim — same-slot crafts
+        share stats, so one item stands in per combo you picked above.</p>
+      ${itemsToSimRow(craftedItems, null, true)}
     </div>`);
   }
 
@@ -1777,23 +1913,92 @@ function renderDroptSources(tree, season, craftedCfg) {
   html.push('</div>');
 
   $('dropt-sources').innerHTML = html.join('');
+  paintItemIcons($('dropt-sources'));
+  loadWowheadWidget().then(refreshWowheadLinks);
 
   // Group on/off toggles: on checks everything in the section, off unchecks it.
   document.querySelectorAll('#dropt-sources .group-toggle').forEach((toggle) => {
     toggle.addEventListener('change', () => {
       const group = toggle.closest('.dropt-group');
       group.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-        if (cb !== toggle) cb.checked = toggle.checked;
+        if (cb === toggle) return;
+        cb.checked = toggle.checked;
+        if (cb.dataset.raid) cb.dispatchEvent(new Event('change', { bubbles: true }));
       });
     });
   });
+
+  // Click anywhere on an item row (icon/name) to toggle it, same as Raidbots
+  // — except the Wowhead link itself, which should still navigate on click.
+  // Delegated (rather than bound per-row) so it keeps working after a raid's
+  // item list is regenerated on a difficulty toggle, below.
+  if (!$('dropt-sources').dataset.itemClickBound) {
+    $('dropt-sources').dataset.itemClickBound = '1';
+    $('dropt-sources').addEventListener('click', (ev) => {
+      const row = ev.target.closest('.dropt-item');
+      if (!row || ev.target.closest('a') || ev.target.matches('input')) return;
+      const cb = row.querySelector('input[data-exclitem]');
+      if (cb && !cb.disabled) cb.checked = !cb.checked;
+    });
+
+    // A raid's item list shows the ilvl(s) of whichever difficulties are
+    // checked, and its Wowhead hovercards are pinned to that ilvl -- both
+    // need refreshing the moment a difficulty checkbox flips, otherwise they
+    // keep showing whatever was checked when the list was first drawn.
+    $('dropt-sources').addEventListener('change', (ev) => {
+      const cb = ev.target.closest('input[data-raid]');
+      if (!cb) return;
+      const raid = raidByInstance[cb.dataset.raid];
+      const block = $('dropt-sources').querySelector(`.raid-block[data-raidid="${cb.dataset.raid}"] .raid-items`);
+      if (!raid || !block) return;
+      const checkedDiffs = [...document.querySelectorAll(`#dropt-sources input[data-raid="${cb.dataset.raid}"]:checked`)]
+        .map((c) => c.dataset.diff);
+      block.innerHTML = raidBossItemsHtml(raid, checkedDiffs);
+      paintItemIcons(block);
+      loadWowheadWidget().then(refreshWowheadLinks);
+    });
+
+    // "Crafted gear" master toggle: enable/disable the item list along with
+    // it, instead of leaving items looking includable while nothing would
+    // actually be simmed (same idea as a raid with no difficulty checked).
+    $('dropt-sources').addEventListener('change', (ev) => {
+      if (ev.target.id !== 'dropt-crafted') return;
+      const on = ev.target.checked;
+      document.querySelectorAll('[data-group="crafted"] input[data-exclitem]').forEach((cb) => {
+        cb.disabled = !on;
+        cb.checked = on;
+      });
+    });
+
+    // "Include embellished crafts" gates the picker below it: with it off,
+    // no embellishment options should stay selected either.
+    $('dropt-sources').addEventListener('change', (ev) => {
+      if (ev.target.id !== 'dropt-crafted-emb') return;
+      const on = ev.target.checked;
+      document.querySelectorAll('#crafted-emb-picker input[data-embkey]').forEach((cb) => {
+        cb.disabled = !on;
+        cb.checked = on;
+      });
+    });
+
+    // "Preferred Stats" must always keep at least one combo ticked -- there's
+    // no sensible "sim nothing" state here, so refuse to uncheck the last one.
+    $('dropt-sources').addEventListener('change', (ev) => {
+      if (!ev.target.matches('#crafted-pairs input[data-pair]')) return;
+      const boxes = [...document.querySelectorAll('#crafted-pairs input[data-pair]')];
+      if (!boxes.some((cb) => cb.checked)) ev.target.checked = true;
+    });
+  }
 
   // Difficulty column toggles: flip one difficulty across all raids.
   document.querySelectorAll('#dropt-sources .diff-toggle').forEach((btn) => {
     btn.addEventListener('click', () => {
       const boxes = [...document.querySelectorAll(`#dropt-sources input[data-raid][data-diff="${btn.dataset.difftoggle}"]`)];
       const turnOn = boxes.some((cb) => !cb.checked);
-      boxes.forEach((cb) => { cb.checked = turnOn; });
+      boxes.forEach((cb) => {
+        cb.checked = turnOn;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+      });
     });
   });
 }
@@ -1835,6 +2040,8 @@ function collectDroptSelection() {
       embellishmentSel: [...document.querySelectorAll('#crafted-emb-picker input:checked')].map((cb) => cb.dataset.embkey),
     };
   }
+  selection.excludeItemIds = [...document.querySelectorAll('#dropt-sources input[data-exclitem]:not(:checked)')]
+    .map((cb) => cb.dataset.exclitem);
   selection.offspec = !!$('dropt-offspec')?.checked;
   selection.keepTierBonus = !!($('dropt-tier')?.checked && !$('dropt-tier-row')?.classList.contains('hidden'));
   selection.upgradeTo = Number($('dropt-upgrade')?.value) || 0;
@@ -2358,6 +2565,18 @@ function craftedStatsFromLine(line) {
   return m ? [Number(m[1]), Number(m[2])] : null;
 }
 
+// The item's real bonus ids (upgrade track, embellishment, crafting quality
+// roll, ...), read straight out of the exact simmed/equipped line the same
+// way craftedStatsFromLine does -- passed to itemTile/tileDataAttrs so
+// Wowhead's widget links to the item's actual roll instead of defaulting to
+// some other one, which is especially visible on crafted gear (a bare item
+// id shows a random secondary-stat allocation, not the one you actually
+// crafted).
+function bonusIdsFromLine(line) {
+  const m = String(line ?? '').match(/(?:^|,)bonus_id=([\d/]+)/);
+  return m ? m[1].split('/').map(Number) : [];
+}
+
 function rowHtml(t, maxAbs) {
   const cls = t.delta > t.error ? 'delta-pos' : t.delta < -t.error ? 'delta-neg' : 'delta-zero';
   const sign = t.delta > 0 ? '+' : '';
@@ -2395,6 +2614,7 @@ function rowHtml(t, maxAbs) {
     source: [translateChipLabel(t.section), translateChipLabel(t.boss)].filter(Boolean).join(' → '),
     enchantId: eq?.enchantId, gemIds: eq?.gemIds,
     craftedStats: craftedStatsFromLine(t.line),
+    bonusIds: bonusIdsFromLine(t.line),
     ...(trackStepFor(t.track, t.ilvl) ?? {}),
   };
   return `
@@ -2522,6 +2742,7 @@ function renderTopGearGrid() {
     const info = {
       name, ilvl, slot: prettySlot(slot), enchantId: eq?.enchantId, gemIds: eq?.gemIds,
       craftedStats: pick ? craftedStatsFromLine(pick.line) : null,
+      bonusIds: bonusIdsFromLine(pick ? pick.line : eq?.line),
       ...(pick ? (trackStepFor(pick.track, pick.ilvl) ?? {}) : {}),
     };
     const detail = pick
@@ -2590,6 +2811,7 @@ function renderBestSetup() {
       source: [translateChipLabel(t.section), translateChipLabel(t.boss)].filter(Boolean).join(' → '),
       enchantId: eq?.enchantId, gemIds: eq?.gemIds,
       craftedStats: craftedStatsFromLine(t.line),
+      bonusIds: bonusIdsFromLine(t.line),
       ...(trackStepFor(t.track, t.ilvl) ?? {}),
     };
     return `<li class="bs-item">
@@ -2889,8 +3111,13 @@ function tileDataAttrs(id, info = {}) {
   // needs an offset-guess, or a gem/enchant tooltip our own itemStats()
   // can't compute) -- link Wowhead's widget straight off it, same as gems
   // and enchants, for one consistent hovercard source everywhere instead of
-  // our own separately-maintained fetch+render pipeline
-  const wowhead = id ? (lang === 'es' ? `es:item=${Number(id)}` : `item=${Number(id)}`) : '';
+  // our own separately-maintained fetch+render pipeline. Without the item's
+  // own bonus ids (upgrade track, crafted quality roll, ...) Wowhead has no
+  // way to know which exact roll this is and shows some default/random one
+  // instead -- see bonusIdsFromLine, which pulls them straight out of the
+  // simmed line so the hovercard matches the item actually in your bag.
+  const bonus = info.bonusIds?.length ? `&bonus=${info.bonusIds.join(':')}` : '';
+  const wowhead = id ? (lang === 'es' ? `es:item=${Number(id)}${bonus}` : `item=${Number(id)}${bonus}`) : '';
   return [
     `data-item="${Number(id) || 0}"`,
     wowhead ? `data-wowhead="${wowhead}"` : '',
@@ -2930,8 +3157,25 @@ function itemTile(id, info = {}) {
   // never to a bare <img> -- confirmed live: a plain data-wowhead <img> never
   // fired a tooltip request, wrapping the same element in an <a> did.
   const whHost = lang === 'es' ? 'es.wowhead.com' : 'www.wowhead.com';
-  const wowhead = lang === 'es' ? `es:item=${Number(id)}` : `item=${Number(id)}`;
-  return `<a class="item-tile-link" href="https://${whHost}/item=${Number(id)}" data-wowhead="${wowhead}" target="_blank" rel="noopener">${img}</a>`;
+  // the widget's own data-wowhead mini-syntax joins params with "&" even
+  // though it isn't a real query string; a real href needs the usual "?"
+  const bonusParam = info.bonusIds?.length ? `bonus=${info.bonusIds.join(':')}` : '';
+  const wowhead = (lang === 'es' ? `es:item=${Number(id)}` : `item=${Number(id)}`) + (bonusParam ? `&${bonusParam}` : '');
+  const href = `https://${whHost}/item=${Number(id)}${bonusParam ? `?${bonusParam}` : ''}`;
+  return `<a class="item-tile-link" href="${href}" data-wowhead="${wowhead}" target="_blank" rel="noopener">${img}</a>`;
+}
+
+// A small icon + name, the whole thing linked to Wowhead's real tooltip
+// widget off a real item id -- the same "enchgem-item" look as an equipped
+// item's enchant/gem subline in the live report (see enchGemSubline), reused
+// by the "Also compare" pickers for any option with a real item id up front
+// (gems/diamonds/consumables immediately, enchants once resolved -- see
+// warmCompareEnchantWowhead).
+function wowheadLinkedTile(itemId, label) {
+  const whHost = lang === 'es' ? 'es.wowhead.com' : 'www.wowhead.com';
+  const wowhead = lang === 'es' ? `es:item=${Number(itemId)}` : `item=${Number(itemId)}`;
+  const tile = itemTile(itemId, { mini: true, noLink: true });
+  return `<a class="cg-opt-link enchgem-item" href="https://${whHost}/item=${Number(itemId)}" data-wowhead="${wowhead}" target="_blank" rel="noopener">${tile} ${esc(label)}</a>`;
 }
 
 // Small flask badge over an item's icon: a catalyzed row already shows the

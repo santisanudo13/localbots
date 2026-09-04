@@ -75,6 +75,16 @@ export function buildSourceTree(lootDb, classId, specKey, knownItems = null, gea
       // what this boss drops per difficulty, so the UI can show it and the
       // numbers can be checked against the in-game adventure guide
       ...(bossDrops(b) ? { drops: bossDrops(b) } : {}),
+      // the actual items this boss can drop for this class/spec, so the UI
+      // can list them individually (icon + name + per-difficulty ilvl) and
+      // let the player toggle any single one out of the sim, à la Raidbots.
+      // Crafted gear collapses to one representative per stat template first
+      // (see craftedRepresentatives) -- otherwise every plate helm design
+      // would list separately despite being stat-identical.
+      items: source.kind === 'crafted'
+        ? craftedRepresentatives([b], classId, specKey, knownItems, gear)
+          .map((it) => ({ id: it.id, name: it.name, slots: usableSlots(it, classId, specKey, false, gear) }))
+        : itemsForUi(b.items, classId, specKey, knownItems, gear),
     }));
     const usable = bosses.reduce((n, b) => n + b.usable, 0);
     const total = source.bosses.reduce(
@@ -179,6 +189,43 @@ function countUsable(items, classId, specKey, knownItems, gear = null) {
   return n;
 }
 
+// Same filtering as countUsable, but returns the items themselves (id, name,
+// which slots it can fill, per-difficulty drop levels) for the "Items to
+// Sim" list.
+function itemsForUi(items, classId, specKey, knownItems, gear = null) {
+  const seen = new Set();
+  const out = [];
+  for (const it of dedupeByName(items)) {
+    if (seen.has(it.id)) continue;
+    seen.add(it.id);
+    if (knownItems && !knownItems.has(it.id)) continue;
+    const slots = usableSlots(it, classId, specKey, false, gear);
+    if (!slots) continue;
+    out.push({ id: it.id, name: it.name, slots, ...(it.drops ? { drops: it.drops } : {}) });
+  }
+  return out;
+}
+
+// Same-slot crafts are stat-identical (every plate helm sims the same), so
+// only one representative per (class, subclass, inventory type, embellished)
+// is worth simming/listing — highest quality wins, so the epic craft names
+// the group rather than a rare or PvP twin that would fail usability anyway.
+export function craftedRepresentatives(bosses, classId, specKey, knownItems, gear = null, offspec = false) {
+  const best = new Map();
+  for (const boss of bosses) {
+    for (const item of dedupe(boss.items)) {
+      if (knownItems && !knownItems.has(item.id)) continue;
+      if (!usableSlots(item, classId, specKey, offspec, gear)) continue;
+      const key = `${item.classId}:${item.subclassId}:${item.invType}:${item.embellished ? 1 : 0}`;
+      const prev = best.get(key);
+      if (!prev || item.quality > prev.quality || (item.quality === prev.quality && item.id > prev.id)) {
+        best.set(key, item);
+      }
+    }
+  }
+  return [...best.values()];
+}
+
 // selection = {
 //   raids:   { [instanceId]: ["Heroic", ...] },
 //   dungeons:{ instanceIds: [...], keyLevel: "10", reward: "end"|"vault" },
@@ -214,6 +261,10 @@ export function buildDroptimizerInput(profileText, options, selection, lootDb, s
   const voidcoreIlvl = { Myth: fullSeason.voidcore?.mythIlvl, Hero: fullSeason.voidcore?.heroIlvl };
   const offspec = selection.offspec === true;
   let skippedUnknown = 0;
+  // Individual items unticked in the "Items to Sim" list (Raidbots-style
+  // per-item toggle) -- checked once, in addItem/addCrafted, so it applies
+  // uniformly across raids, dungeons, world bosses, outdoor and crafted gear.
+  const excludedItemIds = new Set((selection.excludeItemIds ?? []).map(Number));
 
   // Both hands are one slot's worth of decision. A two-hander closes the off
   // hand, so nothing is suggested for it; and putting a two-hander on someone
@@ -296,6 +347,7 @@ export function buildDroptimizerInput(profileText, options, selection, lootDb, s
 
   const addItem = (item, baseIlvl, track, labels) => {
     if (knownItems && !knownItems.has(item.id)) { skippedUnknown++; return; }
+    if (excludedItemIds.has(item.id)) return;
     const slots = usableSlots(item, classId, specKey, offspec, gear);
     if (!slots || !baseIlvl) return;
     let ilvl = upgradedIlvl(baseIlvl, track, upgradeTo, tracks);
@@ -331,6 +383,7 @@ export function buildDroptimizerInput(profileText, options, selection, lootDb, s
   // dropped item's plain ilevel-only payload.
   const addCrafted = (item, baseIlvl, pair, craftedVoidcoreIlvl) => {
     if (knownItems && !knownItems.has(item.id)) { skippedUnknown++; return; }
+    if (excludedItemIds.has(item.id)) return;
     const slots = usableSlots(item, classId, specKey, offspec, gear);
     if (!slots || !baseIlvl) return;
     // crafted Voidcores: weapons/trinkets at max craft can go higher
@@ -425,6 +478,8 @@ export function buildDroptimizerInput(profileText, options, selection, lootDb, s
     } else if (source.kind === 'crafted') {
       const c = selection.crafted;
       if (!c?.enabled) continue;
+      // "Preferred Stats": which secondary-stat combos to sim on every
+      // craftable item -- one, several, or all of them (defaults to all).
       const pairs = (Array.isArray(c.statPairs) ? c.statPairs : [])
         .map(String).filter((p) => /^\d+\/\d+$/.test(p));
       if (!pairs.length) continue;
