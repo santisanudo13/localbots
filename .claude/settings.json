@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e '\nlet d = \"\";\nprocess.stdin.on(\"data\", c => d += c);\nprocess.stdin.on(\"end\", () => {\n  let input;\n  try { input = JSON.parse(d); } catch { process.exit(0); }\n  const f = input.tool_input && input.tool_input.file_path;\n  if (!f || !f.endsWith(\".js\")) process.exit(0);\n  const { execSync } = require(\"child_process\");\n  try {\n    execSync(`node --check \"${f}\"`, { stdio: \"pipe\" });\n  } catch (e) {\n    const lines = (e.stderr || e.message || \"\").toString().split(\"\\n\").filter(Boolean).slice(0, 3).join(\" | \");\n    console.log(JSON.stringify({ systemMessage: \"Warning: node --check failed for \" + f + \" -- \" + lines }));\n  }\n});\n'",
+            "statusMessage": "Checking JS syntax..."
+          }
+        ]
+      }
+    ]
+  }
+}

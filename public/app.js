@@ -1866,30 +1866,30 @@ function renderDroptSources(tree, season, craftedCfg) {
       <h3><label><input type="checkbox" id="dropt-crafted">
         Crafted gear <span class="hint-inline">${crafted[0].usable} craftable items</span></label></h3>
       <div class="dropt-row">
-        <label>ilvl <input type="number" id="dropt-crafted-ilvl" value="${craftedCfg?.maxIlvl ?? 285}" min="200" max="320"></label>
+        <label>ilvl <input type="number" id="dropt-crafted-ilvl" disabled value="${craftedCfg?.maxIlvl ?? 285}" min="200" max="320"></label>
         <label title="How many Sparks (or equivalent crafting currency) you actually have -- crafting a new item spends one, regardless of which stat combo you pick at the table. Leave blank if you don't want to track it.">
-          Sparks available <input type="number" id="dropt-crafted-sparks" min="0" placeholder="?">
+          Sparks available <input type="number" id="dropt-crafted-sparks" disabled min="0" placeholder="?">
         </label>
         <span class="hint-inline" id="crafted-sparks-status"></span>
       </div>
       <div class="dropt-row" id="crafted-pairs">
         <span class="hint-inline">Preferred Stats:</span>
         ${CRAFT_PAIRS.map(([pair, label]) => `
-          <label><input type="checkbox" data-pair="${pair}" checked> ${label}</label>`).join('')}
+          <label><input type="checkbox" data-pair="${pair}" disabled checked> ${label}</label>`).join('')}
       </div>
       <div class="dropt-row">
         <label title="Crafted weapons and trinkets at max craft can take an Ascendant Voidcore">
-          <input type="checkbox" id="dropt-crafted-voidcore">
+          <input type="checkbox" id="dropt-crafted-voidcore" disabled>
           Apply Voidcores <span class="hint-inline">weapons &amp; trinkets → ${craftedCfg?.voidcoreIlvl ?? 295}</span></label>
         <label title="A few crafted designs carry a built-in embellishment effect — simc simulates it">
-          <input type="checkbox" id="dropt-crafted-emb" checked>
+          <input type="checkbox" id="dropt-crafted-emb" disabled checked>
           Include embellished crafts</label>
       </div>
       ${(craftedCfg?.embellishments?.length ?? 0) ? `
       <div class="cg-slot-head">Embellishments — which craft-time effect is worth the most?</div>
       <div class="dropt-row" id="crafted-emb-picker">
         ${craftedCfg.embellishments.map((o) => `
-          <label><input type="checkbox" data-embkey="${esc(o.key)}" checked> ${esc(o.label)}</label>`).join('')}
+          <label><input type="checkbox" data-embkey="${esc(o.key)}" disabled checked> ${esc(o.label)}</label>`).join('')}
       </div>
       <p class="hint">Each ticked embellishment is simmed on a crafted piece — once, and
         doubled (×2) where two copies stack. Only 2 embellished items can be worn at a
@@ -1963,23 +1963,32 @@ function renderDroptSources(tree, season, craftedCfg) {
       loadWowheadWidget().then(refreshWowheadLinks);
     });
 
-    // "Crafted gear" master toggle: enable/disable the item list along with
-    // it, instead of leaving items looking includable while nothing would
-    // actually be simmed (same idea as a raid with no difficulty checked).
+    // "Crafted gear" master toggle: disable the WHOLE group along with it --
+    // ilvl, Preferred Stats, Voidcores, embellishments and the item list --
+    // instead of leaving every sub-control still tickable while the source
+    // itself is off (same idea as a raid with no difficulty checked).
     $('dropt-sources').addEventListener('change', (ev) => {
       if (ev.target.id !== 'dropt-crafted') return;
       const on = ev.target.checked;
+      document.querySelectorAll('[data-group="crafted"] input, [data-group="crafted"] select')
+        .forEach((el) => {
+          if (el === ev.target) return;
+          el.disabled = !on;
+        });
       document.querySelectorAll('[data-group="crafted"] input[data-exclitem]').forEach((cb) => {
-        cb.disabled = !on;
         cb.checked = on;
       });
+      // Re-enabling respects whatever "Include embellished crafts" was left
+      // at, rather than force-enabling its picker too.
+      if (on) $('dropt-crafted-emb').dispatchEvent(new Event('change', { bubbles: true }));
     });
 
     // "Include embellished crafts" gates the picker below it: with it off,
     // no embellishment options should stay selected either.
     $('dropt-sources').addEventListener('change', (ev) => {
       if (ev.target.id !== 'dropt-crafted-emb') return;
-      const on = ev.target.checked;
+      const craftedOn = $('dropt-crafted')?.checked;
+      const on = ev.target.checked && craftedOn;
       document.querySelectorAll('#crafted-emb-picker input[data-embkey]').forEach((cb) => {
         cb.disabled = !on;
         cb.checked = on;
